@@ -1,0 +1,1 @@
+{ "environment": "prod", "domainPrefix": "app", "dbMultiAz": true, "backupDays": 35, "deletionProtection": true, "logRetentionDays": 365, "demoBanner": false }

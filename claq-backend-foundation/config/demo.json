@@ -1,0 +1,1 @@
+{ "environment": "demo", "domainPrefix": "demo", "dbMultiAz": false, "backupDays": 7, "deletionProtection": false, "logRetentionDays": 30, "demoBanner": true }
