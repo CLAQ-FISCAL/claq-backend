@@ -1,0 +1,13 @@
+{
+  "environment": "prod",
+  "domainPrefix": "app",
+  "awsAccountId": "145908329051",
+  "dbMultiAz": true,
+  "backupDays": 35,
+  "deletionProtection": true,
+  "logRetentionDays": 365,
+  "demoBanner": false,
+  "alertsFromEmail": "alerts@claq.co.mz",
+  "callbackUrls": ["https://app.claq.co.mz/callback"],
+  "logoutUrls": ["https://app.claq.co.mz/logout"]
+}

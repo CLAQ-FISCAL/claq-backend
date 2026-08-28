@@ -1,0 +1,203 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  STAFF
+  VIEWER
+}
+
+enum RuleStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  RETIRED
+}
+
+enum ObligationStatus {
+  UPCOMING
+  DUE
+  OVERDUE
+  PAID
+  SUBMITTED
+  NOT_APPLICABLE
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Tenant {
+  id                  String                @id @default(uuid())
+  name                String
+  plan                String                @default("ACCOUNTANT_OFFICE")
+  stripeCustomerId    String?               @unique
+  createdAt           DateTime              @default(now())
+  memberships         Membership[]
+  companies           Company[]
+  notificationSettings NotificationSetting[]
+  simulations         Simulation[]
+  billingSubscriptions BillingSubscription[]
+  invoices            Invoice[]
+}
+
+model User {
+  id          String      @id @default(uuid())
+  cognitoSub  String      @unique
+  email       String      @unique
+  displayName String?
+  phone       String?
+  memberships Membership[]
+}
+
+model Membership {
+  tenantId String
+  userId   String
+  role     MembershipRole
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  user     User   @relation(fields: [userId], references: [id])
+  @@id([tenantId, userId])
+}
+
+model Company {
+  id             String  @id @default(uuid())
+  tenantId       String
+  legalName      String
+  nuitCiphertext Bytes?
+  municipality   String?
+  taxRegime      String?
+  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  obligations    Obligation[]
+  @@index([tenantId])
+}
+
+model RuleSet {
+  id            String     @id @default(uuid())
+  code          String
+  version       String
+  status        RuleStatus
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  content       Json
+  sourceUrl     String
+  reviewer      String?
+  approvedAt    DateTime?
+  @@unique([code, version])
+}
+
+model Obligation {
+  id             String           @id @default(uuid())
+  tenantId       String
+  companyId      String
+  title          String
+  dueAt          DateTime
+  status         ObligationStatus @default(UPCOMING)
+  ruleVersion    String
+  sourceSnapshot Json
+  createdAt      DateTime         @default(now())
+  company        Company          @relation(fields: [companyId], references: [id])
+  attempts       NotificationAttempt[]
+  @@index([tenantId, dueAt])
+  @@index([tenantId, status])
+  @@index([dueAt])
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  requestId  String
+  occurredAt DateTime @default(now())
+  before     Json?
+  after      Json?
+  @@index([tenantId, occurredAt])
+}
+
+model NotificationSetting {
+  id       String              @id @default(uuid())
+  tenantId String
+  channel  NotificationChannel
+  enabled  Boolean             @default(true)
+  leadDays Int[]               @default([7, 3, 1, 0])
+  tenant   Tenant              @relation(fields: [tenantId], references: [id])
+  @@unique([tenantId, channel])
+}
+
+model NotificationAttempt {
+  id           String              @id @default(uuid())
+  tenantId     String
+  obligationId String
+  channel      NotificationChannel
+  leadDay      Int
+  status       NotificationStatus  @default(PENDING)
+  detail       String?
+  createdAt    DateTime            @default(now())
+  obligation   Obligation          @relation(fields: [obligationId], references: [id])
+  @@unique([obligationId, channel, leadDay])
+  @@index([tenantId, createdAt])
+}
+
+model Simulation {
+  id           String   @id @default(uuid())
+  tenantId     String
+  companyId    String?
+  code         String
+  inputs       Json
+  breakdown    Json
+  total        String
+  ruleVersions Json
+  createdAt    DateTime @default(now())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  @@index([tenantId, code, createdAt])
+}
+
+model BillingSubscription {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  stripeCustomerId     String
+  stripeSubscriptionId String   @unique
+  status               String
+  priceId              String
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  tenant               Tenant   @relation(fields: [tenantId], references: [id])
+  @@index([tenantId])
+  @@index([stripeCustomerId])
+}
+
+model Invoice {
+  id              String   @id @default(uuid())
+  tenantId        String
+  stripeInvoiceId String   @unique
+  amountDue       Int
+  currency        String   @default("mzn")
+  status          String
+  invoicePdfUrl   String?
+  hostedInvoiceUrl String?
+  createdAt       DateTime @default(now())
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  @@index([tenantId, createdAt])
+}

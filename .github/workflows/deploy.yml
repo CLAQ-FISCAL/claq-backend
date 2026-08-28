@@ -1,0 +1,17 @@
+name: deploy
+on:
+  push: { branches: [main] }
+  workflow_dispatch: { inputs: { environment: { type: choice, required: true, options: [demo, prod] } } }
+permissions: { id-token: write, contents: read }
+jobs:
+  deploy:
+    environment: ${{ inputs.environment || 'demo' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}, aws-region: ${{ vars.AWS_REGION }} }
+      - run: npm run deploy:${{ inputs.environment || 'demo' }}

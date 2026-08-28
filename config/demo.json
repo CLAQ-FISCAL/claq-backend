@@ -1,0 +1,13 @@
+{
+  "environment": "demo",
+  "domainPrefix": "demo",
+  "awsAccountId": "794813216328",
+  "dbMultiAz": false,
+  "backupDays": 7,
+  "deletionProtection": false,
+  "logRetentionDays": 30,
+  "demoBanner": true,
+  "alertsFromEmail": "alerts@demo.claq.co.mz",
+  "callbackUrls": ["http://localhost:3000/callback"],
+  "logoutUrls": ["http://localhost:3000/logout"]
+}
