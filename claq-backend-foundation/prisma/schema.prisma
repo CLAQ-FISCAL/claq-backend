@@ -1,0 +1,14 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum MembershipRole { OWNER ADMIN ACCOUNTANT STAFF VIEWER }
+enum RuleStatus { DRAFT IN_REVIEW APPROVED RETIRED }
+enum ObligationStatus { UPCOMING DUE OVERDUE PAID SUBMITTED NOT_APPLICABLE }
+
+model Tenant { id String @id @default(uuid()) name String plan String @default("DEMO") createdAt DateTime @default(now()) memberships Membership[] companies Company[] }
+model User { id String @id @default(uuid()) cognitoSub String @unique email String @unique displayName String? memberships Membership[] }
+model Membership { tenantId String userId String role MembershipRole tenant Tenant @relation(fields:[tenantId],references:[id]) user User @relation(fields:[userId],references:[id]) @@id([tenantId,userId]) }
+model Company { id String @id @default(uuid()) tenantId String legalName String nuitCiphertext Bytes? municipality String? taxRegime String? tenant Tenant @relation(fields:[tenantId],references:[id]) obligations Obligation[] @@index([tenantId]) }
+model RuleSet { id String @id @default(uuid()) code String version String status RuleStatus effectiveFrom DateTime effectiveTo DateTime? content Json sourceUrl String reviewer String? approvedAt DateTime? @@unique([code,version]) }
+model Obligation { id String @id @default(uuid()) tenantId String companyId String title String dueAt DateTime status ObligationStatus @default(UPCOMING) ruleVersion String sourceSnapshot Json createdAt DateTime @default(now()) company Company @relation(fields:[companyId],references:[id]) @@index([tenantId,dueAt]) }
+model AuditEvent { id String @id @default(uuid()) tenantId String actorId String? action String entityType String entityId String requestId String occurredAt DateTime @default(now()) before Json? after Json? @@index([tenantId,occurredAt]) }
