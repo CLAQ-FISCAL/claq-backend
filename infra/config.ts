@@ -29,6 +29,8 @@ export type StageConfig = {
   stripeWebhookSecret?: string;
   /** Maps plan codes to Stripe price ids, e.g. { "ACCOUNTANT_PRO": "price_..." }. */
   stripePrices?: Record<string, string>;
+  /** Enables the idempotent demo bootstrap custom resource (never set in prod). */
+  demoSeed?: { email: string; cognitoSub: string; displayName?: string };
 };
 
 const REQUIRED_FIELDS = ['environment', 'domainPrefix', 'dbMultiAz', 'backupDays', 'deletionProtection', 'logRetentionDays', 'demoBanner', 'alertsFromEmail'] as const;

@@ -7,6 +7,7 @@ const lambdas = {
   reminders: 'src/workers/reminders.ts',
   notifier: 'src/workers/notifier.ts',
   migrator: 'src/workers/migrator.ts',
+  seed: 'src/workers/seed.ts',
 };
 
 rmSync('dist', { recursive: true, force: true });

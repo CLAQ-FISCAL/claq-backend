@@ -5,6 +5,7 @@
 - VPC (2 AZs): public subnets + NAT (`1` demo, `2` prod), `app` subnets (Lambda), `db` subnets (isolated, RDS only)
 - RDS PostgreSQL 16 (`db.t4g.micro` demo / `db.t4g.large` Multi-AZ prod), encrypted with the `claq-<stage>-data` KMS key, credentials in Secrets Manager
 - Migration runner Lambda invoked as a `Custom::ClaqDatabaseMigration` custom resource on every deploy
+- Demo seeder Lambda (`Custom::ClaqDemoSeed`, demo stage only): idempotent synthetic bootstrap — tenant, memberships, companies, notification settings
 - API Lambda (Prisma, RLS-guarded) behind API Gateway HTTP API with the Cognito JWT authorizer
 - Reminders Lambda on `cron(0 6 * * ? *)` → Notifications SQS queue (DLQ ×3) → Notifier Lambda → SES email
 - Cognito user pool (admin-create-user only, optional TOTP MFA, 12+ char passwords)
@@ -31,19 +32,15 @@ npm run deploy:prod         # requires GitHub prod environment approval in CI
 
 1. `cdk bootstrap aws://ACCOUNT/REGION` (Identity Center role, never root).
 2. `npm run deploy:demo` — creates VPC, RDS, Cognito, queues, API, WAF, CloudTrail, GuardDuty, Security Hub.
-3. Seed the demo database (synthetic data only):
-   ```powershell
-   $env:DATABASE_URL = "postgresql://claq_admin:<password>@<endpoint>:5432/claq?sslmode=require"
-   npm run seed:demo
-   ```
-   Get `<password>` from Secrets Manager (`DatabaseSecretArn` output). The connection must
-   run from inside the VPC (bastion, SSM session port-forward, or CloudShell in-VPC).
+3. The demo stage self-seeds (no VPN/SSM needed): the `Custom::ClaqDemoSeed`
+   custom resource (`src/workers/seed.ts`) idempotently creates the synthetic
+   `CLAQ DEMO` accountant tenant (`ACCOUNTANT_PREMIUM`), the company in
+   `config/demo.json → demoSeed`, its OWNER membership, two synthetic companies,
+   and notification settings. It reuses existing rows, so reruns are no-ops.
+   `prod` never has `demoSeed` set, so prod can never run it.
 4. Create demo users: `aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username <email> --user-attributes Name=email,Value=<email> Name=email_verified,Value=true`.
-5. Bind the Cognito user to the seeded membership (one-off SQL from step 3's session):
-   ```sql
-   UPDATE "User" SET "cognitoSub" = '<cognito-sub>' WHERE email = 'demo-admin@claq.co.mz';
-   ```
-6. Give the frontend partner exactly three values: `COGNITO_USER_POOL_ID`,
+   The `demoSeed.cognitoSub` must match the created user's `sub` (use `admin-get-user` to read it).
+5. Give the frontend partner exactly three values: `COGNITO_USER_POOL_ID`,
    `COGNITO_CLIENT_ID`, `API_BASE_URL` (stack outputs). Nothing else.
 
 ### SSO setup (optional, per stage)
@@ -110,7 +107,7 @@ in `infra/stack.ts`).
 ## Known limitations / follow-ups
 
 - Prisma CLI dev-advisory (deepmerge-ts) — requires Prisma 7 config migration (see TAX-CONTENT.md).
-- No SSO (Google/Microsoft/Apple), WhatsApp/push channels, billing/plans, or PDF job pipeline yet.
+- No PDF job pipeline yet (invoices are Stripe-native); WhatsApp/push depend on the optional provider setup above.
 - Prisma connects directly to RDS (`connection_limit=1`); add RDS Proxy before high concurrency.
 - `sslmode=require` + `rejectUnauthorized:false` in the migrator: switch to the RDS CA
   bundle for certificate validation hardening.

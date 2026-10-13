@@ -131,6 +131,33 @@ export class ClaqStack extends Stack {
       properties: { SecretArn: foundation.database.secret!.secretArn, MigrationHash: migrationsHash() },
     });
 
+    // ---------- Demo seed (custom resource, demo stage only) ----------
+    // Idempotent synthetic bootstrap so demo@claq.co.mz can log in and see a populated
+    // ACCOUNTANT_PREMIUM tenant. Strictly gated: prod never has cfg.demoSeed set.
+    if (!prod && cfg.demoSeed) {
+      const seederFn = baseFn('DemoSeeder', 'seed', {
+        memorySize: 256,
+        timeout: Duration.minutes(5),
+        description: 'Idempotent demo bootstrap: tenant, memberships, synthetic companies, notification settings',
+      });
+      foundation.database.secret!.grantRead(seederFn);
+      const seedProvider = new customresources.Provider(this, 'DemoSeedProvider', {
+        onEventHandler: seederFn,
+        logRetention: logs.RetentionDays.ONE_MONTH,
+      });
+      new CustomResource(this, 'DemoSeed', {
+        serviceToken: seedProvider.serviceToken,
+        resourceType: 'Custom::ClaqDemoSeed',
+        properties: {
+          SecretArn: foundation.database.secret!.secretArn,
+          SeedKey: 'v1',
+          DemoSub: cfg.demoSeed.cognitoSub,
+          DemoEmail: cfg.demoSeed.email,
+          DemoDisplayName: cfg.demoSeed.displayName ?? cfg.demoSeed.email,
+        },
+      });
+    }
+
     // ---------- API ----------
     const apiFn = baseFn('ApiFunction', 'api', {
       memorySize: 512,
