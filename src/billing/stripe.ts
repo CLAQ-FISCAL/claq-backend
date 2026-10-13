@@ -26,13 +26,13 @@ export async function syncStripeSubscription(
   },
 ): Promise<{ plan: string }> {
   const mapping = resolvePlanFromPrice(args.priceId);
-  const plan = mapping?.planCode ?? 'ACCOUNTANT_OFFICE';
+  const plan = mapping?.planCode ?? 'ACCOUNTANT_FREE';
 
   await prisma.$transaction(async (tx) => {
     await tx.tenant.upsert({
       where: { id: tenantId },
       update: { stripeCustomerId: args.stripeCustomerId },
-      create: { name: `Tenant ${tenantId.slice(0, 8)}`, plan: 'ACCOUNTANT_OFFICE', stripeCustomerId: args.stripeCustomerId },
+      create: { name: `Tenant ${tenantId.slice(0, 8)}`, plan: 'ACCOUNTANT_FREE', stripeCustomerId: args.stripeCustomerId },
     });
 
     await tx.billingSubscription.upsert({
@@ -91,7 +91,7 @@ export async function handleInvoiceEvent(
   });
 }
 
-export async function findTenantByStripeCustomer(prisma: PrismaClient, stripeCustomerId: string): Promise<string | null> {
-  const tenant = await prisma.tenant.findUnique({ where: { stripeCustomerId }, select: { id: true } });
-  return tenant?.id ?? null;
+export async function findTenantByStripeCustomer(prisma: PrismaClient, stripeCustomerId: string): Promise<{ id: string; type: string } | null> {
+  const tenant = await prisma.tenant.findUnique({ where: { stripeCustomerId }, select: { id: true, type: true } });
+  return tenant ?? null;
 }

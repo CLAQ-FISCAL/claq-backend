@@ -46,7 +46,8 @@ Subscription management via Stripe. Webhook receiver at `POST /v1/billing/webhoo
 | POST | `/v1/billing/webhook` | **Stripe signature** | Webhook receiver |
 
 Events handled: `customer.subscription.created/updated/deleted`, `invoice.paid/payment_failed`.
-Price ↔ plan mapping configured via `STRIPE_PRICE_ACCOUNTANT_OFFICE` + `STRIPE_PRICE_PME_CORPORATE`.
+Price ↔ plan mapping configured via the `STRIPE_PRICES` JSON env var (`{ "ACCOUNTANT_PRO": "price_...", "COMPANY_PEQUENA": "price_..." }`).
+When a subscription is deleted the tenant downgrades to its family default (`ACCOUNTANT_FREE` or `COMPANY_MICRO`).
 
 ## Notification channels
 
@@ -59,18 +60,34 @@ Price ↔ plan mapping configured via `STRIPE_PRICE_ACCOUNTANT_OFFICE` + `STRIPE
 
 ## Subscription plans
 
-Two paid tiers, enforced server-side:
+Two plan families, selected by `Tenant.type` (`ACCOUNTANT` or `COMPANY`), enforced server-side. `DEMO` is unlimited.
 
-| Plan | Companies | Users | Simulators | Channels |
+### Accountants (`GET /v1/plans` → `families.ACCOUNTANT`)
+
+| Plan | Companies | Label |
+|---|---|---|
+| **ACCOUNTANT_FREE** | 3 | Início de Carteira |
+| **ACCOUNTANT_PRO** | 20 | Carteira em Crescimento |
+| **ACCOUNTANT_PREMIUM** | 60+ (unlimited) | Carteira Alargada / Escritório |
+
+### Companies / Empresas (`GET /v1/plans` → `families.COMPANY`)
+
+Tier suggested from declared annual revenue (`Company.annualRevenueMzn`).
+
+| Plan | Annual revenue (MZN) | Users | Storage | Features |
 |---|---|---|---|---|
-| **ACCOUNTANT_OFFICE** (Escritório de Contabilidade) | 100 | 10 | All 13 | EMAIL, PUSH, WHATSAPP, IN_APP |
-| **PME_CORPORATE** (PME / Empresa Consultora) | 3 | 3 | Core 7 (IVA, IRPS, IRPC, INSS, salário, custo trabalhador, multas) | EMAIL, IN_APP |
+| **COMPANY_MICRO** | < 2.5 M | 1 | — | fiscal calendar, alerts |
+| **COMPANY_PEQUENA** | 2.5 M – 25 M | 3 | 5 GB | + risk score |
+| **COMPANY_MEDIA** | 25 M – 100 M | 15 | unlimited | + audit, branches |
+| **COMPANY_GRANDE** | > 100 M / group | unlimited | unlimited | + multi-enterprise, multicontribution |
 
-`GET /v1/subscription` returns the current plan, limits and usage (company/user counts).
+`GET /v1/subscription` returns `plan`, `family`, `tenantType`, `limits` (companies, users, storage, features, channels), and usage.
+`GET /v1/plans/suggest?annualRevenueMzn=…` returns the suggested Empresas tier.
 Enforcement:
 - `POST /v1/companies` returns `403 PLAN_LIMIT_EXCEEDED` when the company cap is reached.
-- `POST /v1/simulators/{code}` returns `403 SIMULATOR_NOT_AVAILABLE` for advanced simulators on PME_CORPORATE.
-- `PUT /v1/notification-settings/{channel}` returns `403 CHANNEL_NOT_AVAILABLE` for WHATSAPP/PUSH on PME_CORPORATE.
+- `POST /v1/simulators/{code}` returns `403 SIMULATOR_NOT_AVAILABLE` when the simulator is not on the plan.
+- `PUT /v1/notification-settings/{channel}` returns `403 CHANNEL_NOT_AVAILABLE` when the channel is not on the plan.
+- The user cap is reported via `GET /v1/subscription` (`limits.maxUsers` / `usage.users`); it will be enforced once a membership-invite endpoint exists.
 
 ## Endpoints
 
@@ -78,15 +95,17 @@ Enforcement:
 |---|---|---|
 | GET | `/v1/health` | Liveness + `SELECT 1` database ping (503 if degraded) |
 | GET | `/v1/me` | Current user + tenant memberships (`{ user, tenants[] }`) |
-| GET | `/v1/subscription` | Current plan, limits (companies, users, simulators, channels), usage |
+| GET | `/v1/plans` | Plan catalogue (accountant + company families) and Empresas revenue thresholds |
+| GET | `/v1/plans/suggest?annualRevenueMzn=` | Suggested Empresas tier for a declared annual revenue |
+| GET | `/v1/subscription` | Current plan, family, tenant type, limits (companies, users, storage, features), usage |
 | GET | `/v1/dashboard` | Next obligation, counts, `compliancePct`, upcoming 5 (current year) |
 | GET | `/v1/obligations` | List. Query: `status` (CSV), `companyId`, `from`, `to`, `limit` (≤500), `offset` |
 | PATCH | `/v1/obligations/{id}` | Body `{"status": "PAID" \| "SUBMITTED" \| "NOT_APPLICABLE" \| "UPCOMING"}`. `DUE`/`OVERDUE` are owned by the daily sync |
 | POST | `/v1/obligations/generate` | Body `{"companyId", "year"}`. Materialises obligations from **APPROVED** obligation-template rules. Idempotent |
 | GET | `/v1/calendar?month=YYYY-MM` | Obligations grouped by ISO day |
-| GET | `/v1/companies` | List (NUIT masked, `hasNuit` flag) |
-| POST | `/v1/companies` | Body `{"legalName", "nuit?" (9 digits), "municipality?", "taxRegime?"}`. NUIT is encrypted with KMS before storage |
-| GET | `/v1/companies/{id}` | Single company; `?revealNuit=true` decrypts the NUIT and writes a `NUIT_REVEALED` audit event |
+| GET | `/v1/companies` | List (NUIT masked, `hasNuit` flag, `annualRevenueMzn`, `suggestedCompanyPlan`) |
+| POST | `/v1/companies` | Body `{"legalName", "nuit?" (9 digits), "municipality?", "taxRegime?", "annualRevenueMzn?"}`. NUIT is encrypted with KMS before storage |
+| GET | `/v1/companies/{id}` | Single company; `?revealNuit=true` decrypts the NUIT and writes a `NUIT_REVEALED` audit event. Includes `annualRevenueMzn` + `suggestedCompanyPlan` |
 | GET | `/v1/simulators` | Simulator registry: codes, inputs metadata, rule codes |
 | POST | `/v1/simulators/{code}` | Body `{"inputs": {...}, "companyId?", "at?" (ISO date)}`. Runs the simulator against **APPROVED** rules, saves and returns the breakdown |
 | GET | `/v1/simulations` | History. Query: `code`, `limit` (≤200) |

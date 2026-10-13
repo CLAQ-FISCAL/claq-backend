@@ -6,7 +6,7 @@ import { audit } from './lib/audit';
 import { NUIT_RE, maskNuit } from './lib/crypto';
 import { AppError, errorResponse, header, jsonResponse, parseJsonBody, optionalString, requireString, type ApiResponse } from './lib/http';
 import { ensureUser, resolveTenant, withTenant } from './lib/tenant';
-import { assertNotificationChannel, assertSimulatorAccess, enforceCompanyLimit, getPlanLimits } from './lib/plans';
+import { ACCOUNTANT_PLAN_CODES, COMPANY_PLAN_CODES, REVENUE_THRESHOLDS, assertNotificationChannel, assertSimulatorAccess, enforceCompanyLimit, getPlanFamily, getPlanLimits, suggestCompanyPlanCode, type PlanCode } from './lib/plans';
 import { dashboardSummary, toDto } from './domain/dashboard';
 import { generateObligations, validateStatusTransition } from './domain/obligations';
 import { getApprovedRule } from './rules';
@@ -58,6 +58,33 @@ function jsonInputs(inputs: Record<string, Decimal | string>): Record<string, st
   return Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, typeof v === 'string' ? v : v.toFixed(2)]));
 }
 
+function limitsDto(plan: string) {
+  const limits = getPlanLimits(plan);
+  return {
+    maxCompanies: limits.maxCompanies === Infinity ? null : limits.maxCompanies,
+    maxUsers: limits.maxUsers === Infinity ? null : limits.maxUsers,
+    storageLimitBytes: limits.storageLimitBytes,
+    features: limits.features,
+    simulatorAccess: limits.simulatorAccess,
+    notificationChannels: limits.notificationChannels,
+    maxLeadDaysEntries: limits.maxLeadDaysEntries,
+    annualRevenueMaxMzn: limits.annualRevenueMaxMzn,
+  };
+}
+
+function planDto(plan: PlanCode) {
+  const limits = getPlanLimits(plan);
+  return { code: limits.code, label: limits.label, ...limitsDto(plan) };
+}
+
+function parseRevenue(value: unknown): Prisma.Decimal | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new AppError(422, 'INPUT_INVALID', "Field 'annualRevenueMzn' must be a non-negative number.");
+  }
+  return new Prisma.Decimal(value);
+}
+
 const routes: Route[] = [
   {
     method: 'GET',
@@ -74,25 +101,40 @@ const routes: Route[] = [
   },
   {
     method: 'GET',
+    pattern: /^\/v1\/plans$/,
+    handler: async () => ({
+      families: {
+        ACCOUNTANT: ACCOUNTANT_PLAN_CODES.map(planDto),
+        COMPANY: COMPANY_PLAN_CODES.map(planDto),
+      },
+      revenueThresholds: REVENUE_THRESHOLDS,
+    }),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/v1\/plans\/suggest$/,
+    handler: async (ctx) => {
+      const revenue = Number(ctx.query.annualRevenueMzn);
+      if (!Number.isFinite(revenue) || revenue < 0) throw new AppError(422, 'INPUT_INVALID', "Query parameter 'annualRevenueMzn' must be a non-negative number.");
+      return { annualRevenueMzn: revenue, suggested: planDto(suggestCompanyPlanCode(revenue)) };
+    },
+  },
+  {
+    method: 'GET',
     pattern: /^\/v1\/subscription$/,
     handler: async (ctx) => {
-      const tenant = await ctx.db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { plan: true } });
+      const tenant = await ctx.db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { plan: true, type: true } });
       if (!tenant) throw new AppError(404, 'TENANT_NOT_FOUND', 'Tenant not found.');
-      const limits = getPlanLimits(tenant.plan);
       const [companyCount, userCount] = await Promise.all([
         ctx.db.company.count({ where: { tenantId: ctx.tenantId } }),
         ctx.db.membership.count({ where: { tenantId: ctx.tenantId } }),
       ]);
       return {
         plan: tenant.plan,
-        label: limits.label,
-        limits: {
-          maxCompanies: limits.maxCompanies === Infinity ? null : limits.maxCompanies,
-          maxUsers: limits.maxUsers === Infinity ? null : limits.maxUsers,
-          simulatorAccess: limits.simulatorAccess,
-          notificationChannels: limits.notificationChannels,
-          maxLeadDaysEntries: limits.maxLeadDaysEntries,
-        },
+        label: getPlanLimits(tenant.plan).label,
+        family: getPlanFamily(tenant.plan),
+        tenantType: tenant.type,
+        limits: limitsDto(tenant.plan),
         usage: { companies: companyCount, users: userCount },
       };
     },
@@ -199,7 +241,17 @@ const routes: Route[] = [
     handler: async (ctx) =>
       ctx.run(async (tx) => {
         const companies = await tx.company.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { legalName: 'asc' } });
-        return { items: companies.map((c) => ({ id: c.id, legalName: c.legalName, hasNuit: c.nuitCiphertext !== null, municipality: c.municipality, taxRegime: c.taxRegime })) };
+        return {
+          items: companies.map((c) => ({
+            id: c.id,
+            legalName: c.legalName,
+            hasNuit: c.nuitCiphertext !== null,
+            municipality: c.municipality,
+            taxRegime: c.taxRegime,
+            annualRevenueMzn: c.annualRevenueMzn?.toString() ?? null,
+            suggestedCompanyPlan: c.annualRevenueMzn ? suggestCompanyPlanCode(c.annualRevenueMzn.toNumber()) : null,
+          })),
+        };
       }),
   },
   {
@@ -212,6 +264,7 @@ const routes: Route[] = [
       if (nuit !== undefined && !NUIT_RE.test(nuit)) throw new AppError(422, 'INPUT_INVALID', 'NUIT must be exactly 9 digits.');
       const municipality = optionalString(ctx.body, 'municipality', 100);
       const taxRegime = optionalString(ctx.body, 'taxRegime', 50);
+      const annualRevenueMzn = parseRevenue(ctx.body.annualRevenueMzn);
       return ctx.run(async (tx) => {
         await enforceCompanyLimit(tx, ctx.tenantId, ctx.plan);
         const company = await tx.company.create({
@@ -221,6 +274,7 @@ const routes: Route[] = [
             nuitCiphertext: nuit ? new Uint8Array(await ctx.crypto.sealValue(nuit)) : null,
             municipality,
             taxRegime,
+            annualRevenueMzn: annualRevenueMzn ?? null,
           },
         });
         await audit(tx, {
@@ -230,9 +284,17 @@ const routes: Route[] = [
           entityType: 'Company',
           entityId: company.id,
           requestId: ctx.requestId,
-          after: { legalName, nuit: nuit ? maskNuit(nuit) : null, municipality, taxRegime },
+          after: { legalName, nuit: nuit ? maskNuit(nuit) : null, municipality, taxRegime, annualRevenueMzn: annualRevenueMzn?.toString() ?? null },
         });
-        return { id: company.id, legalName: company.legalName, hasNuit: nuit !== undefined, municipality, taxRegime };
+        return {
+          id: company.id,
+          legalName: company.legalName,
+          hasNuit: nuit !== undefined,
+          municipality,
+          taxRegime,
+          annualRevenueMzn: annualRevenueMzn?.toString() ?? null,
+          suggestedCompanyPlan: annualRevenueMzn ? suggestCompanyPlanCode(annualRevenueMzn.toNumber()) : null,
+        };
       });
     },
   },
@@ -244,9 +306,16 @@ const routes: Route[] = [
       return ctx.run(async (tx) => {
         const company = await tx.company.findFirst({ where: { id: params.id, tenantId: ctx.tenantId } });
         if (!company) throw new AppError(404, 'NOT_FOUND', 'Company not found.');
-        if (!reveal || !company.nuitCiphertext) {
-          return { id: company.id, legalName: company.legalName, hasNuit: company.nuitCiphertext !== null, municipality: company.municipality, taxRegime: company.taxRegime };
-        }
+        const base = {
+          id: company.id,
+          legalName: company.legalName,
+          hasNuit: company.nuitCiphertext !== null,
+          municipality: company.municipality,
+          taxRegime: company.taxRegime,
+          annualRevenueMzn: company.annualRevenueMzn?.toString() ?? null,
+          suggestedCompanyPlan: company.annualRevenueMzn ? suggestCompanyPlanCode(company.annualRevenueMzn.toNumber()) : null,
+        };
+        if (!reveal || !company.nuitCiphertext) return base;
         const nuit = await ctx.crypto.openValue(Buffer.from(company.nuitCiphertext));
         await audit(tx, {
           tenantId: ctx.tenantId,
@@ -256,7 +325,7 @@ const routes: Route[] = [
           entityId: company.id,
           requestId: ctx.requestId,
         });
-        return { id: company.id, legalName: company.legalName, nuit, hasNuit: true, municipality: company.municipality, taxRegime: company.taxRegime };
+        return { ...base, nuit };
       });
     },
   },

@@ -47,7 +47,9 @@ enum NotificationStatus {
 model Tenant {
   id                  String                @id @default(uuid())
   name                String
-  plan                String                @default("ACCOUNTANT_OFFICE")
+  type                String                @default("ACCOUNTANT")
+  plan                String                @default("ACCOUNTANT_FREE")
+  annualRevenueMzn    Decimal?              @db.Decimal(18, 2)
   stripeCustomerId    String?               @unique
   createdAt           DateTime              @default(now())
   memberships         Membership[]
@@ -77,13 +79,14 @@ model Membership {
 }
 
 model Company {
-  id             String  @id @default(uuid())
-  tenantId       String
-  legalName      String
-  nuitCiphertext Bytes?
-  municipality   String?
-  taxRegime      String?
-  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  id                String   @id @default(uuid())
+  tenantId          String
+  legalName         String
+  nuitCiphertext    Bytes?
+  municipality      String?
+  taxRegime         String?
+  annualRevenueMzn  Decimal? @db.Decimal(18, 2)
+  tenant            Tenant     @relation(fields: [tenantId], references: [id])
   obligations    Obligation[]
   @@index([tenantId])
 }

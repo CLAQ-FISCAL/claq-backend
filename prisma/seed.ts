@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   const year = new Date().getUTCFullYear();
   const tenantId = await prisma.$transaction(async (master) => {
     const tenant = await master.tenant.create({
-      data: { name: 'CLAQ DEMO (ESCRITÓRIO DE CONTABILIDADE)', plan: 'ACCOUNTANT_OFFICE' },
+      data: { name: 'CLAQ DEMO (ESCRITÓRIO DE CONTABILIDADE)', type: 'ACCOUNTANT', plan: 'ACCOUNTANT_PREMIUM' },
     });
     await master.$queryRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
 
@@ -83,8 +83,8 @@ async function main(): Promise<void> {
     }).then((user) => master.membership.create({ data: { tenantId: tenant.id, userId: user.id, role: 'OWNER' } }).catch(() => undefined));
 
     for (const company of [
-      { legalName: 'ABC Comércio, Lda (SYNTHETIC)', municipality: 'Maputo Cidade', taxRegime: 'IVA_GENERAL' },
-      { legalName: 'SoftServ Moçambique, Lda (SYNTHETIC)', municipality: 'Matola', taxRegime: 'IVA_GENERAL' },
+      { legalName: 'ABC Comércio, Lda (SYNTHETIC)', municipality: 'Maputo Cidade', taxRegime: 'IVA_GENERAL', annualRevenueMzn: 900_000 },
+      { legalName: 'SoftServ Moçambique, Lda (SYNTHETIC)', municipality: 'Matola', taxRegime: 'IVA_GENERAL', annualRevenueMzn: 12_000_000 },
     ]) {
       await master.company.create({ data: { tenantId: tenant.id, ...company } });
     }

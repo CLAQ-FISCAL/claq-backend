@@ -1,0 +1,66 @@
+flowchart TB
+    subgraph USERS["1 · USERS &amp; AUTH"]
+        App(["Web / Mobile app<br/><i>your users</i>"])
+        Cognito["<b>Cognito User Pool</b><br/><i>sign-in + SSO · issues JWT</i>"]
+    end
+
+    subgraph DATA["2 · BUSINESS API"]
+        Waf["<b>WAF</b><br/><i>rate-limits · blocks attacks</i>"]
+        ApiGW["<b>API Gateway</b><br/><i>secure HTTP entry point</i>"]
+        ApiFn["[[<b>Lambda · API</b>]]<br/><i>business logic · 1 tenant = 1 row set (RLS)</i>"]
+        RDS[("<b>PostgreSQL (RDS)</b><br/><i>one encrypted database</i>")]
+        S3[("<b>S3</b><br/><i>customer documents · private</i>")]
+        Kms["<b>KMS</b><br/><i>master key · encrypts DB + customer NUIT</i>"]
+    end
+
+    subgraph PIPE["3 · REMINDER PIPELINE (daily)"]
+        Events["<b>EventBridge</b><br/><i>fires at 06:00 UTC every day</i>"]
+        Planner["[[<b>Lambda · Planner</b>]]<br/><i>who is due? statuses + dedup</i>"]
+        Queue["<b>SQS</b><br/><i>message buffer (DLQ on failure)</i>"]
+        Sender["[[<b>Lambda · Sender</b>]]<br/><i>delivers via email &amp; WhatsApp</i>"]
+    end
+
+    subgraph OUT["4 · OUTBOUND + SECURITY"]
+        Ses["<b>SES</b><br/><i>email delivery</i>"]
+        Wapp["<b>WhatsApp Cloud</b><br/><i>message delivery</i>"]
+        SecOps["<b>CloudTrail + GuardDuty</b><br/><i>audit log · threat detection</i>"]
+    end
+
+    subgraph DEPLOY["5 · DEPLOYMENT"]
+        Gen["<b>GitHub Actions</b><br/><i>CDK code → one command</i>"]
+        Cf["<b>CloudFormation</b><br/><i>creates/updates all of the above</i>"]
+    end
+
+    %% ---- auth ----
+    App -->|"sign-in"| Cognito
+    Cognito -->|"hands out JWT"| App
+    App -->|"requests + JWT"| ApiGW
+    ApiGW -->|"verifies JWT"| Cognito
+
+    %% ---- api ----
+    ApiGW -->|"forwards"| ApiFn
+    Waf -->|"guards"| ApiGW
+    ApiFn -->|"reads / writes"| RDS
+    Kms -->|"encrypts"| RDS
+    ApiFn -->|"encrypts / decrypts NUIT"| Kms
+    ApiFn -->|"stores / reads files"| S3
+
+    %% ---- pipeline ----
+    Events -->|"trigger"| Planner
+    Planner -->|"reads obligations"| RDS
+    Planner -->|"queues reminders"| Queue
+    Queue -->|"score"| Sender
+    Sender -->|"email"| Ses
+    Sender -->|"message"| Wapp
+    Sender -->|"logs delivery"| RDS
+
+    %% ---- security ----
+    SecOps -->|"watches"| ApiGW
+    SecOps -->|"watches"| RDS
+
+    %% ---- deploy ----
+    Gen -->|"cdk deploy"| Cf
+    Cf -->|"provisions everything"| DATA
+    Cf -->|"provisions everything"| PIPE
+    Cf -->|"provisions everything"| USERS
+    Cf -->|"provisions everything"| OUT

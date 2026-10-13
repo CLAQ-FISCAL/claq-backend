@@ -16,8 +16,8 @@ reviewed `RuleSet` rows (see `docs/TAX-CONTENT.md`).
   encrypted with a rotating KMS CMK, Secrets Manager credentials, SQS notifications queue
   + DLQ, S3 documents bucket (private, versioned, SSL-enforced), Cognito user pool
   (admin-created users, optional TOTP MFA), API Gateway HTTP API with Cognito JWT authorizer
-- **Security**: WAF (rate limiting + AWS managed rules), CloudTrail (multi-region management trail), GuardDuty (threat detection), Security Hub (compliance dashboard)
-- **Subscription plans**: Two tiers enforced server-side — `ACCOUNTANT_OFFICE` (100 companies, 10 users, all simulators, all channels) and `PME_CORPORATE` (3 companies, 3 users, 7 core simulators, email + in-app only). `GET /v1/subscription` returns limits + usage.
+- **Security**: WAF (rate limiting + AWS managed rules, opt-in via `enableWaf`), CloudTrail (multi-region management trail), GuardDuty (threat detection), Security Hub (compliance dashboard)
+- **Subscription plans**: Two families enforced server-side. **Accountants** (`Tenant.type = ACCOUNTANT`): `ACCOUNTANT_FREE` (3 companies), `ACCOUNTANT_PRO` (20), `ACCOUNTANT_PREMIUM` (60+). **Companies** (`Tenant.type = COMPANY`): `COMPANY_MICRO` (1 user, calendar + alerts), `COMPANY_PEQUENA` (3 users, risk score, 5 GB documents), `COMPANY_MEDIA` (15 users, audit + branches), `COMPANY_GRANDE` (multi-enterprise / multicontribution). `GET /v1/subscription` returns family, limits, features and usage; `GET /v1/plans` lists the catalogue and Empresas revenue thresholds.
 - **SSO**: Google, Microsoft (Azure AD) and Apple federated login via Cognito (configured per-stage in config/*.json).
 - **WhatsApp**: Meta Cloud API integration for obligation reminders (via Secrets Manager).
 - **Billing**: Stripe subscription management with webhook receiver, invoice tracking, plan syncing.

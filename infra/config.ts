@@ -9,6 +9,9 @@ export type StageConfig = {
   deletionProtection: boolean;
   logRetentionDays: number;
   demoBanner: boolean;
+  /** Creates the regional WAF WebACL. Also set wafAttachToApi when the region supports HTTP API association. */
+  enableWaf?: boolean;
+  wafAttachToApi?: boolean;
   alertsFromEmail: string;
   googleClientId?: string;
   googleClientSecret?: string;
@@ -24,8 +27,8 @@ export type StageConfig = {
   whatsappSecretArn?: string;
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
-  stripePriceAccountantOffice?: string;
-  stripePricePmeCorporate?: string;
+  /** Maps plan codes to Stripe price ids, e.g. { "ACCOUNTANT_PRO": "price_..." }. */
+  stripePrices?: Record<string, string>;
 };
 
 const REQUIRED_FIELDS = ['environment', 'domainPrefix', 'dbMultiAz', 'backupDays', 'deletionProtection', 'logRetentionDays', 'demoBanner', 'alertsFromEmail'] as const;

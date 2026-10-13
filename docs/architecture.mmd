@@ -1,0 +1,115 @@
+flowchart TB
+    subgraph CLIENTS["CLIENTS"]
+        Web(["<b>Web app</b><br/>SSL · app.claq.co.mz / localhost:3000"])
+        Mobile(["<b>Mobile app</b><br/>future target · same API"])
+        Ops(["<b>Administrator (tribe)</b><br/>creates Cognito users · no self sign-up"])
+    end
+
+    subgraph IDP["IDENTITY PROVIDERS (SSO)"]
+        Google["Google"]
+        MSFT["Microsoft Azure AD (OIDC)"]
+        Apple["Apple Sign-In"]
+    end
+
+    subgraph AWS["AWS ACCOUNT — demo: 794813216328 · af-south-1 · cdk stack <b>claq-demo</b>"]
+        direction TB
+        subgraph VPC["VPC (max 2 AZs · 3 subnet tiers /24)"]
+            direction TB
+            subgraph PUBLICSUBNETS["public subnets"]
+                NAT["NAT Gateway (1 in demo · 2 in prod)"]
+                InternetGW["Internet Gateway"]
+            end
+            subgraph APPSUBNETS["app subnets (PRIVATE_WITH_EGRESS)"]
+                AppSG["<b>Application Security Group</b>"]
+                ApiFn["[[<b>ApiFunction</b> Lambda]]<br/>512 MB · 28s · X-Ray · Prisma + RLS tenant guard<br/><i>src/router.ts</i>"]
+                RemFn["[[<b>RemindersFunction</b> Lambda]]<br/>512 MB · 5 min · daily planner<br/><i>src/workers/reminders.ts</i>"]
+                NotifFn["[[<b>NotifierFunction</b> Lambda]]<br/>256 MB · 60s · SES + WhatsApp<br/><i>src/workers/notifier.ts</i>"]
+                MigFn["[[<b>MigrationsRunner</b> Lambda]]<br/>custom resource · 5 min<br/><i>src/workers/migrator.ts</i>"]
+            end
+            subgraph DBSUBNETS["db subnets (PRIVATE_ISOLATED · no internet)"]
+                DBSG["Database Security Group<br/>allow TCP 5432 ← only App SG"]
+                RDS[("RDS PostgreSQL 16<br/>T4G.MICRO demo · multi-AZ in prod<br/>KMS-encrypted · backups 7d demo / 35d prod<br/>deletion protection off demo / on prod<br/>secret in Secrets Manager")]
+            end
+        end
+
+        APIGW["<b>API Gateway HTTP API</b><br/>GET /v1/health · POST /v1/billing/webhook · public<br/>/v1/{proxy+} · Cognito JWT authorizer"]
+        WEBACL["WAF WebACL<br/>2,000 req/IP rate limit<br/>AWS managed rules: Common + SQLi<br/><i>(created — associate in prod)</i>"]
+        COGNITO["<b>Cognito User Pool</b><br/>email alias · no self sign-up · optional TOTP MFA<br/>password ≥12 · Google/MS/Azure/Apple IdPs<br/>domain prefix: demo-auth"]
+        EVENTS["EventBridge rule<br/>cron 0 6 * * ? · 06:00 UTC retry×2"]
+        SQSQ["SQS <b>Notifications</b><br/>70s visibility · SQS-KMS · sends→Api/Reminders<br/>consume←Notifier (batch 10 · partial-failure reporting)"]
+        SQSDLQ["SQS <b>DLQ</b><br/>maxReceive 3 · 14 days retention"]
+        S3_DOCS[("S3 <b>documents</b><br/>private · versioned · enforceSSL · SSE-S3")]
+        S3_TRAIL[("S3 <b>trail logs</b><br/>private · versioned · lifecycle 30d demo / 365d prod")]
+        KMS["KMS CMK <b>claq-demo-data</b><br/>automatic rotation · encrypts RDS + NUIT field"]
+        SECRETS["Secrets Manager<br/>RDS admin creds · WhatsApp token · Stripe keys"]
+        CLOUDTRAIL["CloudTrail<br/>multi-region management trail"]
+        CWLOGS["CloudWatch Logs + X-Ray<br/>retention 30d demo / 365d prod"]
+        GUARDDUTY["GuardDuty<br/>findings every 15 min"]
+        SECURITYHUB["Security Hub<br/>auto-enabled controls"]
+
+        RESTMIGRANT["CloudFormation custom resource<br/><b>Custom::ClaqDatabaseMigration</b><br/>keyed on hash of prisma/migrations SQL"]
+    end
+
+    subgraph SAAS["EXTERNAL SERVICES"]
+        STRIPE["Stripe<br/>subscriptions · invoices · webhooks"]
+        SES["Amazon SES<br/>alert emails"]
+        WHATSAPP["Meta WhatsApp Cloud API<br/>obligation reminders"]
+    end
+
+    subgraph CICD["CI / CD — GitHub Actions"]
+        VERIFY["verify (on PR)<br/>npm ci · lint · build · test · cdk synth"]
+        DEPLOY["deploy (main / manual)<br/>OIDC role assume (no static keys)<br/>GitHub environment demo / prod<br/>prod requires reviewers"]
+        CFN["AWS CloudFormation<br/>CDK synth → template"]
+    end
+
+    %% ---------- Auth flow ----------
+    Web -->|"GET/POST JSON · Bearer JWT"| APIGW
+    Mobile -->|"GET/POST JSON · Bearer JWT"| APIGW
+    Ops -->|"admin console"| COGNITO
+    Web -->|"OAuth2 authorize-code"| COGNITO
+    Mobile -->|"OAuth2 authorize-code"| COGNITO
+    COGNITO -->|"federated IdPs"| Google
+    COGNITO -->|"federated IdPs"| MSFT
+    COGNITO -->|"federated IdPs"| Apple
+    APIGW -.->|"JWT audience + issuer check"| COGNITO
+
+    %% ---------- API path ----------
+    APIGW -->|"proxy /v1/{proxy+}"| ApiFn
+    WEBACL -.->|"rate + SQLi/WAF rules"| APIGW
+    ApiFn -->|"Prisma SQL · set_config('app.tenant_id') · RLS"| RDS
+    ApiFn -->|"seal / unseal NUIT (ciphertext at rest)"| KMS
+    ApiFn -->|"documents (short-lived URLs)"| S3_DOCS
+    ApiFn -->|"reminder/notification requests"| SQSQ
+    ApiFn -->|"checkout session · status"| STRIPE
+    STRIPE -->|"signed webhook POST"| APIGW
+    ApiFn -->|"secrets via ARN"| SECRETS
+
+    %% ---------- Reminder pipeline ----------
+    EVENTS -->|"trigger daily 06:00 UTC"| RemFn
+    RemFn -->|"sync UPCOMING/DUE/OVERDUE · lead-day dedup"| RDS
+    RemFn -->|"enqueue"| SQSQ
+    SQSQ -.->|"exhausted retries"| SQSDLQ
+    NotifFn -->|"EventSourceMapping consume · partial failures"| SQSQ
+    NotifFn -->|"ses:SendEmail"| SES
+    NotifFn -->|"POST message"| WHATSAPP
+    NotifFn -->|"WhatsApp token"| SECRETS
+
+    %% ---------- Migrations ----------
+    RESTMIGRANT -->|"on deploy"| MigFn
+    MigFn -->|"apply prisma/migrations SQL (hashing)"| RDS
+
+    %% ---------- Observability / security ----------
+    CLOUDTRAIL -->|"management events"| S3_TRAIL
+    CLOUDTRAIL -->|"events"| CWLOGS
+    ApiFn -->|"logs · traces"| CWLOGS
+    RemFn -->|"logs · traces"| CWLOGS
+    NotifFn -->|"logs · traces"| CWLOGS
+    RDS -.->|"monitored"| GUARDDUTY
+    APIGW -.->|"monitored"| GUARDDUTY
+    APIGW -.->|"compliance findings"| SECURITYHUB
+    RDS -.->|"compliance findings"| SECURITYHUB
+
+    %% ---------- CI/CD ----------
+    DEPLOY -->|"OIDC assume AWS_DEPLOY_ROLE_ARN"| CFN
+    CFN -->|"provision / update"| AWS
+    VERIFY -.->|"quality gates pass before merge"| DEPLOY

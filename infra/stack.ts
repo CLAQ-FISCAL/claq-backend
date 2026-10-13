@@ -142,8 +142,7 @@ export class ClaqStack extends Stack {
         KMS_KEY_ID: foundation.dataKey.keyId,
         ...(cfg.stripeSecretKey ? { STRIPE_SECRET_KEY: cfg.stripeSecretKey } : {}),
         ...(cfg.stripeWebhookSecret ? { STRIPE_WEBHOOK_SECRET: cfg.stripeWebhookSecret } : {}),
-        ...(cfg.stripePriceAccountantOffice ? { STRIPE_PRICE_ACCOUNTANT_OFFICE: cfg.stripePriceAccountantOffice } : {}),
-        ...(cfg.stripePricePmeCorporate ? { STRIPE_PRICE_PME_CORPORATE: cfg.stripePricePmeCorporate } : {}),
+        ...(cfg.stripePrices ? { STRIPE_PRICES: JSON.stringify(cfg.stripePrices) } : {}),
       },
       description: 'CLAQ HTTP API (Prisma + RLS tenant guard)',
     });
@@ -197,40 +196,45 @@ export class ClaqStack extends Stack {
     });
 
     // ---------- Security: WAF on API Gateway ----------
-    const webAcl = new wafv2.CfnWebACL(this, 'ApiWaf', {
-      scope: 'REGIONAL',
-      defaultAction: { allow: {} },
-      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'ClaqApiWaf', sampledRequestsEnabled: true },
-      rules: [
-        {
-          name: 'RateLimit2k',
-          priority: 1,
-          action: { block: {} },
-          statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: 'IP' } },
-          visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'RateLimit', sampledRequestsEnabled: true },
-        },
-        {
-          name: 'AWSManagedRulesCommonRuleSet',
-          priority: 2,
-          overrideAction: { none: {} },
-          statement: { managedRuleGroupStatement: { vendorName: 'AWS', name: 'AWSManagedRulesCommonRuleSet' } },
-          visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'CommonRuleSet', sampledRequestsEnabled: true },
-        },
-        {
-          name: 'AWSManagedRulesSQLiRuleSet',
-          priority: 3,
-          overrideAction: { none: {} },
-          statement: { managedRuleGroupStatement: { vendorName: 'AWS', name: 'AWSManagedRulesSQLiRuleSet' } },
-          visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'SqlInjection', sampledRequestsEnabled: true },
-        },
-      ],
-    });
-    // WAF association for HTTP APIs is not supported in af-south-1 via CfnWebACLAssociation.
-    // WebACL is created; attach via console or switch prod to eu-west-1/us-east-1 when ready.
-    // new wafv2.CfnWebACLAssociation(this, 'ApiWafAssociation', {
-    //   resourceArn: `arn:aws:apigateway:${this.region}::/apis/${api.httpApiId}/stages/$default`,
-    //   webAclArn: webAcl.attrArn,
-    // });
+    // Opt-in: an unattached WebACL is still billed, and HTTP API association is not
+    // supported in every region (af-south-1 rejects CfnWebACLAssociation).
+    if (cfg.enableWaf) {
+      const webAcl = new wafv2.CfnWebACL(this, 'ApiWaf', {
+        scope: 'REGIONAL',
+        defaultAction: { allow: {} },
+        visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'ClaqApiWaf', sampledRequestsEnabled: true },
+        rules: [
+          {
+            name: 'RateLimit2k',
+            priority: 1,
+            action: { block: {} },
+            statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: 'IP' } },
+            visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'RateLimit', sampledRequestsEnabled: true },
+          },
+          {
+            name: 'AWSManagedRulesCommonRuleSet',
+            priority: 2,
+            overrideAction: { none: {} },
+            statement: { managedRuleGroupStatement: { vendorName: 'AWS', name: 'AWSManagedRulesCommonRuleSet' } },
+            visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'CommonRuleSet', sampledRequestsEnabled: true },
+          },
+          {
+            name: 'AWSManagedRulesSQLiRuleSet',
+            priority: 3,
+            overrideAction: { none: {} },
+            statement: { managedRuleGroupStatement: { vendorName: 'AWS', name: 'AWSManagedRulesSQLiRuleSet' } },
+            visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'SqlInjection', sampledRequestsEnabled: true },
+          },
+        ],
+      });
+      new CfnOutput(this, 'ApiWafArn', { value: webAcl.attrArn });
+      if (cfg.wafAttachToApi) {
+        new wafv2.CfnWebACLAssociation(this, 'ApiWafAssociation', {
+          resourceArn: `arn:aws:apigateway:${this.region}::/apis/${api.httpApiId}/stages/$default`,
+          webAclArn: webAcl.attrArn,
+        });
+      }
+    }
 
     // ---------- Security: CloudTrail ----------
     new cloudtrail.Trail(this, 'ManagementTrail', {

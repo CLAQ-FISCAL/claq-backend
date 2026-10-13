@@ -65,9 +65,13 @@ npm run deploy:prod         # requires GitHub prod environment approval in CI
 
 ### Stripe billing setup (optional)
 
-1. Create a Stripe account, create Products + Prices for each plan (ACCOUNTANT_OFFICE, PME_CORPORATE).
-2. Set environment variables on the API Lambda: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-   `STRIPE_PRICE_ACCOUNTANT_OFFICE`, `STRIPE_PRICE_PME_CORPORATE`.
+1. Create a Stripe account and a Product + Price for each plan you sell
+   (`ACCOUNTANT_FREE/PRO/PREMIUM`, `COMPANY_MICRO/PEQUENA/MEDIA/GRANDE`).
+2. Set `stripeSecretKey`, `stripeWebhookSecret` and a `stripePrices` map in `config/<stage>.json`, e.g.
+   ```json
+   { "stripePrices": { "ACCOUNTANT_PRO": "price_...", "COMPANY_PEQUENA": "price_..." } }
+   ```
+   Deploy passes these to the API Lambda as `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_PRICES` (JSON).
 3. Register a webhook in Stripe dashboard → endpoint `POST <API_URL>/v1/billing/webhook` →
    events: `customer.subscription.*`, `invoice.*`.
 4. Create a Checkout Session or Customer Portal in the frontend to collect payments.
