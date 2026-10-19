@@ -8,6 +8,7 @@ const lambdas = {
   notifier: 'src/workers/notifier.ts',
   migrator: 'src/workers/migrator.ts',
   seed: 'src/workers/seed.ts',
+  regulatory: 'src/workers/regulatory.ts',
 };
 
 rmSync('dist', { recursive: true, force: true });
@@ -29,7 +30,7 @@ for (const [name, entry] of Object.entries(lambdas)) {
 
 // Ship the generated Prisma client + the rhel engine (Lambda target) with every DB-backed lambda.
 // Native (windows/darwin) engines are for local dev only and are stripped from the bundle.
-for (const name of ['api', 'reminders', 'notifier']) {
+for (const name of ['api', 'reminders', 'notifier', 'regulatory']) {
   const nodeModules = join('dist', 'lambdas', name, 'node_modules');
   mkdirSync(nodeModules, { recursive: true });
   cpSync(join('node_modules', '.prisma'), join(nodeModules, '.prisma'), { recursive: true });

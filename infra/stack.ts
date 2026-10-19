@@ -180,6 +180,8 @@ export class ClaqStack extends Stack {
     const api = new apigwv2.HttpApi(this, 'HttpApi', { createDefaultStage: true });
     const jwt = new authorizers.HttpJwtAuthorizer('CognitoJwt', `https://cognito-idp.${this.region}.amazonaws.com/${pool.userPoolId}`, { jwtAudience: [client.userPoolClientId] });
     api.addRoutes({ path: '/v1/health', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('HealthIntegration', apiFn) });
+    api.addRoutes({ path: '/v1/plans', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('PlansIntegration', apiFn) });
+    api.addRoutes({ path: '/v1/plans/suggest', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('PlansSuggestIntegration', apiFn) });
     api.addRoutes({ path: '/v1/billing/webhook', methods: [apigwv2.HttpMethod.POST], integration: new integrations.HttpLambdaIntegration('WebhookIntegration', apiFn) });
     api.addRoutes({ path: '/v1/{proxy+}', methods: [apigwv2.HttpMethod.ANY], integration: new integrations.HttpLambdaIntegration('Integration', apiFn), authorizer: jwt });
 
@@ -220,6 +222,24 @@ export class ClaqStack extends Stack {
       eventSourceArn: foundation.queue.queueArn,
       batchSize: 10,
       reportBatchItemFailures: true,
+    });
+
+    // ---------- Regulatory watch (hourly news/tax ingest) ----------
+    const regulatoryFn = baseFn('RegulatoryWatcherFunction', 'regulatory', {
+      memorySize: 512,
+      timeout: Duration.minutes(5),
+      environment: {
+        ...baseEnv,
+        DOCUMENT_BUCKET: foundation.documents.bucketName,
+        ...(cfg.regulatorySources && cfg.regulatorySources.length > 0 ? { REGULATORY_SOURCES: JSON.stringify(cfg.regulatorySources) } : {}),
+      },
+      description: 'Hourly regulatory source ingest (creates DRAFT-ready review items, never auto-applies rules)',
+    });
+    foundation.documents.grantReadWrite(regulatoryFn);
+    new events.Rule(this, 'RegulatoryWatchRule', {
+      schedule: events.Schedule.cron({ minute: '15' }),
+      description: 'Hourly regulatory source polling (:15 UTC)',
+      targets: [new targets.LambdaFunction(regulatoryFn, { retryAttempts: 2 })],
     });
 
     // ---------- Security: WAF on API Gateway ----------

@@ -14,5 +14,14 @@
     "email": "demo@claq.co.mz",
     "cognitoSub": "a1bc6288-4041-70e3-a3dd-246eab3b5c16",
     "displayName": "Demo User (accountant)"
-  }
+  },
+  "regulatorySources": [
+    {
+      "key": "at-news",
+      "name": "Autoridade Tributária — Notícias e Documentos",
+      "url": "https://www.at.gov.mz/api/documents?root=NOTICIAS",
+      "kind": "AT_DOCUMENTS",
+      "jurisdiction": "MZ"
+    }
+  ]
 }

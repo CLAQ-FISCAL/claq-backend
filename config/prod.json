@@ -9,5 +9,14 @@
   "demoBanner": false,
   "alertsFromEmail": "alerts@claq.co.mz",
   "callbackUrls": ["https://app.claq.co.mz/callback"],
-  "logoutUrls": ["https://app.claq.co.mz/logout"]
+  "logoutUrls": ["https://app.claq.co.mz/logout"],
+  "regulatorySources": [
+    {
+      "key": "at-news",
+      "name": "Autoridade Tributária — Notícias e Documentos",
+      "url": "https://www.at.gov.mz/api/documents?root=NOTICIAS",
+      "kind": "AT_DOCUMENTS",
+      "jurisdiction": "MZ"
+    }
+  ]
 }

@@ -77,6 +77,40 @@ function planDto(plan: PlanCode) {
   return { code: limits.code, label: limits.label, ...limitsDto(plan) };
 }
 
+const REGULATORY_WRITER_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const;
+
+type RegulatoryUpdateRow = {
+  id: string;
+  documentId: string;
+  title: string;
+  summary: string | null;
+  url: string;
+  sourceKey: string;
+  category: string;
+  status: string;
+  affectedRuleCodes: string[];
+  candidateRuleSetId: string | null;
+  publishedAt: Date | null;
+  detectedAt: Date;
+};
+
+function regulatoryUpdateDto(update: RegulatoryUpdateRow) {
+  return {
+    id: update.id,
+    documentId: update.documentId,
+    title: update.title,
+    summary: update.summary,
+    url: update.url,
+    sourceKey: update.sourceKey,
+    category: update.category,
+    status: update.status,
+    affectedRuleCodes: update.affectedRuleCodes,
+    candidateRuleSetId: update.candidateRuleSetId,
+    publishedAt: update.publishedAt?.toISOString() ?? null,
+    detectedAt: update.detectedAt.toISOString(),
+  };
+}
+
 function parseRevenue(value: unknown): Prisma.Decimal | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -458,6 +492,102 @@ const routes: Route[] = [
       });
     },
   },
+  // ---------- Regulatory watch ----------
+  {
+    method: 'GET',
+    pattern: /^\/v1\/regulatory\/sources$/,
+    handler: async (ctx) => {
+      const sources = await ctx.db.regulatorySource.findMany({ orderBy: { key: 'asc' } });
+      return {
+        items: sources.map((s) => ({
+          key: s.key,
+          name: s.name,
+          url: s.url,
+          kind: s.kind,
+          jurisdiction: s.jurisdiction,
+          enabled: s.enabled,
+          lastFetchedAt: s.lastFetchedAt?.toISOString() ?? null,
+          lastStatus: s.lastStatus,
+          lastError: s.lastError,
+        })),
+      };
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/v1\/regulatory\/updates$/,
+    handler: async (ctx) => {
+      const limitRaw = Number(ctx.query.limit ?? 50);
+      if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 200) throw new AppError(422, 'INPUT_INVALID', "'limit' must be an integer between 1 and 200.");
+      const where: Prisma.RegulatoryUpdateWhereInput = {};
+      if (ctx.query.category) where.category = ctx.query.category.toUpperCase();
+      if (ctx.query.status) where.status = ctx.query.status.toUpperCase();
+      if (ctx.query.since) where.detectedAt = { gte: parseDate(ctx.query.since, 'since')! };
+      const items = await ctx.db.regulatoryUpdate.findMany({ where, orderBy: [{ publishedAt: 'desc' }, { detectedAt: 'desc' }], take: limitRaw });
+      return { items: items.map(regulatoryUpdateDto) };
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/v1\/regulatory\/updates\/(?<id>[\w-]+)$/,
+    handler: async (ctx, params) => {
+      const update = await ctx.db.regulatoryUpdate.findUnique({
+        where: { id: params.id },
+        include: { document: { include: { source: { select: { key: true, name: true, url: true } } } } },
+      });
+      if (!update) throw new AppError(404, 'NOT_FOUND', 'Regulatory update not found.');
+      return {
+        ...regulatoryUpdateDto(update),
+        document: { externalId: update.document.externalId, url: update.document.url, fetchedAt: update.document.fetchedAt.toISOString() },
+        source: update.document.source,
+      };
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/v1\/regulatory\/updates\/(?<id>[\w-]+)\/candidate$/,
+    status: 201,
+    handler: async (ctx, params) => {
+      if (!(REGULATORY_WRITER_ROLES as readonly string[]).includes(ctx.role)) throw new AppError(403, 'FORBIDDEN', 'Your role cannot promote regulatory updates to a draft rule.');
+      const update = await ctx.db.regulatoryUpdate.findUnique({ where: { id: params.id } });
+      if (!update) throw new AppError(404, 'NOT_FOUND', 'Regulatory update not found.');
+      const code = requireString(ctx.body, 'code', 80);
+      const version = requireString(ctx.body, 'version', 40);
+      const effectiveFrom = new Date(requireString(ctx.body, 'effectiveFrom', 40));
+      if (Number.isNaN(effectiveFrom.getTime())) throw new AppError(422, 'INPUT_INVALID', "Field 'effectiveFrom' must be an ISO date.");
+      const effectiveToRaw = optionalString(ctx.body, 'effectiveTo', 40);
+      const effectiveTo = effectiveToRaw ? new Date(effectiveToRaw) : undefined;
+      if (effectiveTo && Number.isNaN(effectiveTo.getTime())) throw new AppError(422, 'INPUT_INVALID', "Field 'effectiveTo' must be an ISO date.");
+      const content = ctx.body.content;
+      if (typeof content !== 'object' || content === null || Array.isArray(content)) throw new AppError(422, 'INPUT_INVALID', "Field 'content' must be a JSON object.");
+      const sourceUrl = optionalString(ctx.body, 'sourceUrl', 500) ?? update.url;
+      let affectedRuleCodes: string[] = update.affectedRuleCodes;
+      const affectedRuleCodesRaw = ctx.body.affectedRuleCodes;
+      if (affectedRuleCodesRaw !== undefined) {
+        if (!Array.isArray(affectedRuleCodesRaw)) throw new AppError(422, 'INPUT_INVALID', "Field 'affectedRuleCodes' must be an array of strings.");
+        affectedRuleCodes = [...new Set(affectedRuleCodesRaw.map((c) => {
+          if (typeof c !== 'string' || c.trim() === '') throw new AppError(422, 'INPUT_INVALID', 'affectedRuleCodes entries must be non-empty strings.');
+          return c.trim();
+        }))];
+      }
+      return ctx.run(async (tx) => {
+        const ruleSet = await tx.ruleSet.create({
+          data: { code, version, status: 'DRAFT', effectiveFrom, effectiveTo: effectiveTo ?? null, content: content as Prisma.InputJsonValue, sourceUrl },
+        });
+        await tx.regulatoryUpdate.update({ where: { id: update.id }, data: { status: 'CANDIDATE_CREATED', candidateRuleSetId: ruleSet.id, affectedRuleCodes } });
+        await audit(tx, {
+          tenantId: ctx.tenantId,
+          actorId: ctx.userId,
+          action: 'REGULATORY_CANDIDATE_CREATED',
+          entityType: 'RuleSet',
+          entityId: ruleSet.id,
+          requestId: ctx.requestId,
+          after: { code, version, status: 'DRAFT', updateId: update.id, sourceUrl },
+        });
+        return { updateId: update.id, status: 'CANDIDATE_CREATED', ruleSet: { id: ruleSet.id, code: ruleSet.code, version: ruleSet.version, status: ruleSet.status } };
+      });
+    },
+  },
   // ---------- Billing ----------
   {
     method: 'GET',
@@ -501,6 +631,8 @@ const routes: Route[] = [
 
 type ObligationDayItem = { id: string; title: string; status: string; companyId: string; companyLegalName: string };
 
+const PUBLIC_PATHS = new Set(['/v1/plans', '/v1/plans/suggest']);
+
 export function createHandler(db: PrismaClient, crypto: CryptoDeps): (event: APIGatewayProxyEventV2WithJWTAuthorizer) => Promise<ApiResponse> {
   return async (event) => {
     const requestId = event.requestContext.requestId || randomUUID();
@@ -513,6 +645,28 @@ export function createHandler(db: PrismaClient, crypto: CryptoDeps): (event: API
           return jsonResponse(200, { status: 'ok', environment: process.env.APP_ENV, requestId }, requestId);
         } catch {
           return jsonResponse(503, { status: 'degraded', environment: process.env.APP_ENV, requestId }, requestId);
+        }
+      }
+
+      if (PUBLIC_PATHS.has(path)) {
+        const publicCtx: RequestContext = {
+          db,
+          crypto,
+          requestId,
+          userId: '',
+          tenantId: '',
+          role: '',
+          plan: '',
+          query: event.queryStringParameters ?? {},
+          body: parseJsonBody(event.body),
+          run: () => Promise.reject(new AppError(403, 'FORBIDDEN', 'Public route.')),
+        };
+        for (const route of routes) {
+          if (route.method !== method) continue;
+          const match = route.pattern.exec(path);
+          if (!match) continue;
+          const body = await route.handler(publicCtx, match.groups ?? {});
+          return jsonResponse(route.status ?? 200, body, requestId);
         }
       }
 

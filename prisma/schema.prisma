@@ -204,3 +204,53 @@ model Invoice {
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
   @@index([tenantId, createdAt])
 }
+
+model RegulatorySource {
+  id            String           @id @default(uuid())
+  key           String           @unique
+  name          String
+  url           String
+  kind          String
+  jurisdiction  String           @default("MZ")
+  enabled       Boolean          @default(true)
+  lastFetchedAt DateTime?
+  lastStatus    String?
+  lastError     String?
+  createdAt     DateTime         @default(now())
+  documents     SourceDocument[]
+}
+
+model SourceDocument {
+  id          String             @id @default(uuid())
+  sourceId    String
+  externalId  String
+  title       String
+  summary     String?
+  url         String
+  publishedAt DateTime?
+  contentHash String
+  rawKey      String?
+  fetchedAt   DateTime           @default(now())
+  source      RegulatorySource   @relation(fields: [sourceId], references: [id])
+  updates     RegulatoryUpdate[]
+  @@unique([sourceId, externalId])
+  @@index([sourceId, publishedAt])
+}
+
+model RegulatoryUpdate {
+  id                 String         @id @default(uuid())
+  documentId         String
+  title              String
+  summary            String?
+  url                String
+  sourceKey          String
+  category           String         @default("NEWS")
+  status             String         @default("NEW")
+  affectedRuleCodes  String[]       @default([])
+  candidateRuleSetId String?
+  publishedAt        DateTime?
+  detectedAt         DateTime       @default(now())
+  document           SourceDocument @relation(fields: [documentId], references: [id])
+  @@index([status, detectedAt])
+  @@index([category, publishedAt])
+}
