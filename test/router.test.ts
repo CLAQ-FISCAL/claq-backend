@@ -80,6 +80,11 @@ describe('api router auth and routing', () => {
     expect(res.body.status).toBe('ok');
   });
 
+  it('answers CORS preflight with 204 before auth', async () => {
+    const res = await createHandler(stubDb([]), crypto)(event('OPTIONS', '/v1/plans'));
+    expect(res.statusCode).toBe(204);
+  });
+
   it('serves a nested plan catalogue without auth', async () => {
     const res = await call(stubDb([]), 'GET', '/v1/plans', { claims: {} });
     expect(res.status).toBe(200);

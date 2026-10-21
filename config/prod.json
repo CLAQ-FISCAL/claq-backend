@@ -18,5 +18,11 @@
       "kind": "AT_DOCUMENTS",
       "jurisdiction": "MZ"
     }
+  ],
+  "corsOrigins": [
+    "https://app.claq.co.mz",
+    "https://claq-fiscal-web-frontend.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
   ]
 }

@@ -33,6 +33,8 @@ export type StageConfig = {
   demoSeed?: { email: string; cognitoSub: string; displayName?: string };
   /** Regulatory sources polled hourly by the RegulatoryWatcher Lambda. */
   regulatorySources?: Array<{ key: string; name: string; url: string; kind: string; jurisdiction?: string }>;
+  /** Origins allowed to call the API cross-origin (CORS preflight + response headers). */
+  corsOrigins?: string[];
 };
 
 const REQUIRED_FIELDS = ['environment', 'domainPrefix', 'dbMultiAz', 'backupDays', 'deletionProtection', 'logRetentionDays', 'demoBanner', 'alertsFromEmail'] as const;

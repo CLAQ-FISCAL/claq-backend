@@ -177,12 +177,29 @@ export class ClaqStack extends Stack {
     foundation.queue.grantSendMessages(apiFn);
     foundation.dataKey.grantEncryptDecrypt(apiFn);
 
-    const api = new apigwv2.HttpApi(this, 'HttpApi', { createDefaultStage: true });
+    const api = new apigwv2.HttpApi(this, 'HttpApi', {
+      createDefaultStage: true,
+      corsPreflight: {
+        allowOrigins: cfg.corsOrigins && cfg.corsOrigins.length > 0 ? cfg.corsOrigins : ['http://localhost:5173'],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PATCH,
+          apigwv2.CorsHttpMethod.PUT,
+          apigwv2.CorsHttpMethod.DELETE,
+          apigwv2.CorsHttpMethod.OPTIONS,
+        ],
+        allowHeaders: ['authorization', 'content-type', 'x-tenant-id'],
+        maxAge: Duration.days(1),
+      },
+    });
     const jwt = new authorizers.HttpJwtAuthorizer('CognitoJwt', `https://cognito-idp.${this.region}.amazonaws.com/${pool.userPoolId}`, { jwtAudience: [client.userPoolClientId] });
     api.addRoutes({ path: '/v1/health', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('HealthIntegration', apiFn) });
     api.addRoutes({ path: '/v1/plans', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('PlansIntegration', apiFn) });
     api.addRoutes({ path: '/v1/plans/suggest', methods: [apigwv2.HttpMethod.GET], integration: new integrations.HttpLambdaIntegration('PlansSuggestIntegration', apiFn) });
     api.addRoutes({ path: '/v1/billing/webhook', methods: [apigwv2.HttpMethod.POST], integration: new integrations.HttpLambdaIntegration('WebhookIntegration', apiFn) });
+    // Public CORS preflight route — must be explicit so it wins over the JWT-protected ANY catch-all.
+    api.addRoutes({ path: '/v1/{proxy+}', methods: [apigwv2.HttpMethod.OPTIONS], integration: new integrations.HttpLambdaIntegration('OptionsIntegration', apiFn) });
     api.addRoutes({ path: '/v1/{proxy+}', methods: [apigwv2.HttpMethod.ANY], integration: new integrations.HttpLambdaIntegration('Integration', apiFn), authorizer: jwt });
 
     // ---------- Reminder scheduler + notifier ----------
