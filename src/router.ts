@@ -6,7 +6,7 @@ import { audit } from './lib/audit';
 import { NUIT_RE, maskNuit } from './lib/crypto';
 import { AppError, errorResponse, header, jsonResponse, parseJsonBody, optionalString, requireString, type ApiResponse } from './lib/http';
 import { ensureUser, resolveTenant, withTenant } from './lib/tenant';
-import { ACCOUNTANT_PLAN_CODES, COMPANY_PLAN_CODES, REVENUE_THRESHOLDS, assertNotificationChannel, assertSimulatorAccess, enforceCompanyLimit, getPlanFamily, getPlanLimits, suggestCompanyPlanCode, type PlanCode } from './lib/plans';
+import { ACCOUNTANT_PLAN_CODES, ALL_SIMULATORS, COMPANY_PLAN_CODES, PLAN_DESCRIPTIONS, REVENUE_THRESHOLDS, UNLIMITED, assertNotificationChannel, assertSimulatorAccess, enforceCompanyLimit, getPlanFamily, getPlanLimits, suggestCompanyPlanCode, type PlanCode } from './lib/plans';
 import { dashboardSummary, toDto } from './domain/dashboard';
 import { generateObligations, validateStatusTransition } from './domain/obligations';
 import { getApprovedRule } from './rules';
@@ -61,11 +61,11 @@ function jsonInputs(inputs: Record<string, Decimal | string>): Record<string, st
 function limitsDto(plan: string) {
   const limits = getPlanLimits(plan);
   return {
-    maxCompanies: limits.maxCompanies === Infinity ? null : limits.maxCompanies,
-    maxUsers: limits.maxUsers === Infinity ? null : limits.maxUsers,
-    storageLimitBytes: limits.storageLimitBytes,
+    maxCompanies: limits.maxCompanies === Infinity ? UNLIMITED : limits.maxCompanies,
+    maxUsers: limits.maxUsers === Infinity ? UNLIMITED : limits.maxUsers,
+    storageLimitBytes: limits.storageLimitBytes ?? UNLIMITED,
     features: limits.features,
-    simulatorAccess: limits.simulatorAccess,
+    simulatorAccess: limits.simulatorAccess === 'all' ? [...ALL_SIMULATORS] : [...limits.coreSimulatorCodes],
     notificationChannels: limits.notificationChannels,
     maxLeadDaysEntries: limits.maxLeadDaysEntries,
     annualRevenueMaxMzn: limits.annualRevenueMaxMzn,
@@ -74,7 +74,23 @@ function limitsDto(plan: string) {
 
 function planDto(plan: PlanCode) {
   const limits = getPlanLimits(plan);
-  return { code: limits.code, label: limits.label, ...limitsDto(plan) };
+  return {
+    code: limits.code,
+    label: limits.label,
+    family: limits.family,
+    description: PLAN_DESCRIPTIONS[limits.code],
+    priceMzn: limits.priceMzn ?? null,
+    limits: limitsDto(plan),
+  };
+}
+
+/** Revenue bands with explicit lower/upper bounds, for the client's own copy. */
+function revenueThresholdsDto() {
+  return REVENUE_THRESHOLDS.map((tier) => ({
+    plan: tier.plan,
+    minMzn: tier.minMzn ?? 0,
+    maxMzn: tier.maxAnnualRevenueMzn,
+  }));
 }
 
 const REGULATORY_WRITER_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const;
@@ -141,7 +157,7 @@ const routes: Route[] = [
         ACCOUNTANT: ACCOUNTANT_PLAN_CODES.map(planDto),
         COMPANY: COMPANY_PLAN_CODES.map(planDto),
       },
-      revenueThresholds: REVENUE_THRESHOLDS,
+      revenueThresholds: revenueThresholdsDto(),
     }),
   },
   {

@@ -8,11 +8,29 @@ const crypto: CryptoDeps = {
   openValue: async (b) => b.toString('utf8'),
 };
 
-function event(method: string, path: string, opts: { claims?: Record<string, unknown>; headers?: Record<string, string> } = {}): APIGatewayProxyEventV2WithJWTAuthorizer {
+type PlanDto = {
+  code: string;
+  label: string;
+  family: string;
+  description?: string;
+  priceMzn?: number | null;
+  limits: {
+    maxCompanies: number;
+    maxUsers: number;
+    storageLimitBytes: number;
+    features: string[];
+    simulatorAccess: string[];
+    notificationChannels: string[];
+    maxLeadDaysEntries: number;
+    annualRevenueMaxMzn: number | null;
+  };
+};
+
+function event(method: string, path: string, opts: { claims?: Record<string, unknown>; headers?: Record<string, string>; query?: Record<string, string> } = {}): APIGatewayProxyEventV2WithJWTAuthorizer {
   return {
     rawPath: path,
     headers: opts.headers ?? {},
-    queryStringParameters: null,
+    queryStringParameters: opts.query ?? null,
     body: undefined,
     isBase64Encoded: false,
     version: '2.0',
@@ -60,6 +78,32 @@ describe('api router auth and routing', () => {
     const res = await call(stubDb([]), 'GET', '/v1/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
+  });
+
+  it('serves a nested plan catalogue without auth', async () => {
+    const res = await call(stubDb([]), 'GET', '/v1/plans', { claims: {} });
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      families: { ACCOUNTANT: PlanDto[]; COMPANY: PlanDto[] };
+      revenueThresholds: { plan: string; minMzn: number; maxMzn: number | null }[];
+    };
+    expect(body.families.ACCOUNTANT).toHaveLength(3);
+    expect(body.families.COMPANY).toHaveLength(4);
+    const plan = body.families.ACCOUNTANT[0];
+    expect(plan.family).toBe('ACCOUNTANT');
+    expect(typeof plan.description).toBe('string');
+    expect(typeof plan.limits.maxCompanies).toBe('number');
+    expect(Array.isArray(plan.limits.simulatorAccess)).toBe(true);
+    expect(body.revenueThresholds[0]).toEqual({ plan: 'COMPANY_MICRO', minMzn: 0, maxMzn: 2_500_000 });
+  });
+
+  it('suggests a nested company plan from revenue without auth', async () => {
+    const res = await call(stubDb([]), 'GET', '/v1/plans/suggest', { claims: {}, query: { annualRevenueMzn: '5000000' } });
+    expect(res.status).toBe(200);
+    const body = res.body as { annualRevenueMzn: number; suggested: PlanDto };
+    expect(body.annualRevenueMzn).toBe(5_000_000);
+    expect(body.suggested.code).toBe('COMPANY_PEQUENA');
+    expect(typeof body.suggested.limits.maxUsers).toBe('number');
   });
 
   it('returns 403 NO_TENANT for users without membership', async () => {

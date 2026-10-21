@@ -23,20 +23,36 @@ export const PLAN_LABELS: Record<PlanCode, string> = {
   COMPANY_GRANDE: 'Grande Empresa / Grupo',
 };
 
+export const PLAN_DESCRIPTIONS: Record<PlanCode, string> = {
+  DEMO: 'Acesso completo para avaliação, com dados sintéticos.',
+  ACCOUNTANT_FREE: 'Porta de entrada gratuita para até 3 clientes.',
+  ACCOUNTANT_PRO: 'Carteira até 20 clientes, calendário fiscal consolidado e relatórios por cliente.',
+  ACCOUNTANT_PREMIUM: 'Carteira alargada (60+ clientes) ou vários contabilistas num escritório.',
+  COMPANY_MICRO: 'Calendário fiscal, alertas e simuladores essenciais para EI e microempresas.',
+  COMPANY_PEQUENA: 'Gestão de clientes e fornecedores, score de risco e 5GB de documentos.',
+  COMPANY_MEDIA: 'Multiutilizador, auditoria, filiais e integrações via API.',
+  COMPANY_GRANDE: 'Multiempresa, BI personalizado e SLA dedicado.',
+};
+
 export const GB = 1024 ** 3;
+
+/** Emitted instead of `null` so the catalogue stays numeric for every consumer. */
+export const UNLIMITED = 999_999;
 
 /** Empresas tiers keyed by declared annual revenue (MZN). Boundaries are inclusive of the lower bound. */
 export const REVENUE_THRESHOLDS = [
-  { plan: 'COMPANY_MICRO' as const, maxAnnualRevenueMzn: 2_500_000 as number | null },
-  { plan: 'COMPANY_PEQUENA' as const, maxAnnualRevenueMzn: 25_000_000 as number | null },
-  { plan: 'COMPANY_MEDIA' as const, maxAnnualRevenueMzn: 100_000_000 as number | null },
-  { plan: 'COMPANY_GRANDE' as const, maxAnnualRevenueMzn: null as number | null },
+  { plan: 'COMPANY_MICRO' as const, minMzn: 0 as number | null, maxAnnualRevenueMzn: 2_500_000 as number | null },
+  { plan: 'COMPANY_PEQUENA' as const, minMzn: 2_500_000 as number | null, maxAnnualRevenueMzn: 25_000_000 as number | null },
+  { plan: 'COMPANY_MEDIA' as const, minMzn: 25_000_000 as number | null, maxAnnualRevenueMzn: 100_000_000 as number | null },
+  { plan: 'COMPANY_GRANDE' as const, minMzn: 100_000_000 as number | null, maxAnnualRevenueMzn: null as number | null },
 ];
 
 export type PlanLimits = {
   code: PlanCode;
   family: PlanFamily;
   label: string;
+  description?: string;
+  priceMzn?: number | null;
   maxCompanies: number;
   maxUsers: number;
   simulatorAccess: 'all' | 'core';
