@@ -25,14 +25,20 @@ export const PLAN_LABELS: Record<PlanCode, string> = {
 
 export const PLAN_DESCRIPTIONS: Record<PlanCode, string> = {
   DEMO: 'Acesso completo para avaliação, com dados sintéticos.',
-  ACCOUNTANT_FREE: 'Porta de entrada gratuita para até 3 clientes.',
+  ACCOUNTANT_FREE: '30 dias grátis para até 3 clientes, depois 1.500 MZN/mês.',
   ACCOUNTANT_PRO: 'Carteira até 20 clientes, calendário fiscal consolidado e relatórios por cliente.',
   ACCOUNTANT_PREMIUM: 'Carteira alargada (60+ clientes) ou vários contabilistas num escritório.',
   COMPANY_MICRO: 'Calendário fiscal, alertas e simuladores essenciais para EI e microempresas.',
   COMPANY_PEQUENA: 'Gestão de clientes e fornecedores, score de risco e 5GB de documentos.',
   COMPANY_MEDIA: 'Multiutilizador, auditoria, filiais e integrações via API.',
-  COMPANY_GRANDE: 'Multiempresa, BI personalizado e SLA dedicado.',
+  COMPANY_GRANDE: 'Multiempresa, BI personalizado e SLA dedicado. Sob consulta, a partir de 25.000 MZN/mês.',
 };
+
+/** Standard discount applied to twelve monthly payments when billed annually. */
+export const ANNUAL_DISCOUNT = 0.15;
+
+/** Free trial granted on the accountant entry plan. */
+export const ACCOUNTANT_TRIAL_DAYS = 30;
 
 export const GB = 1024 ** 3;
 
@@ -52,7 +58,14 @@ export type PlanLimits = {
   family: PlanFamily;
   label: string;
   description?: string;
-  priceMzn?: number | null;
+  /** Monthly price in MZN. `null` when the plan has no published monthly price. */
+  priceMznMonthly: number | null;
+  /** Annual price in MZN (normally twelve months at a 15% discount). */
+  priceMznAnnual: number | null;
+  /** Free-trial length in days before the first charge. */
+  trialDays: number;
+  /** True when the price is a starting point pending a sales conversation. */
+  customPricing: boolean;
   maxCompanies: number;
   maxUsers: number;
   simulatorAccess: 'all' | 'core';
@@ -81,6 +94,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'DEMO',
     family: 'DEMO',
     label: PLAN_LABELS.DEMO,
+    priceMznMonthly: null,
+    priceMznAnnual: null,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: Infinity,
     maxUsers: Infinity,
     simulatorAccess: 'all',
@@ -95,6 +112,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'ACCOUNTANT_FREE',
     family: 'ACCOUNTANT',
     label: PLAN_LABELS.ACCOUNTANT_FREE,
+    priceMznMonthly: 1_500,
+    priceMznAnnual: 15_300,
+    trialDays: ACCOUNTANT_TRIAL_DAYS,
+    customPricing: false,
     maxCompanies: 3,
     maxUsers: Infinity,
     simulatorAccess: 'all',
@@ -109,6 +130,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'ACCOUNTANT_PRO',
     family: 'ACCOUNTANT',
     label: PLAN_LABELS.ACCOUNTANT_PRO,
+    priceMznMonthly: 4_500,
+    priceMznAnnual: 45_900,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: 20,
     maxUsers: Infinity,
     simulatorAccess: 'all',
@@ -123,6 +148,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'ACCOUNTANT_PREMIUM',
     family: 'ACCOUNTANT',
     label: PLAN_LABELS.ACCOUNTANT_PREMIUM,
+    priceMznMonthly: 12_500,
+    priceMznAnnual: 127_500,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: Infinity,
     maxUsers: Infinity,
     simulatorAccess: 'all',
@@ -137,6 +166,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'COMPANY_MICRO',
     family: 'COMPANY',
     label: PLAN_LABELS.COMPANY_MICRO,
+    priceMznMonthly: 1_200,
+    priceMznAnnual: 12_240,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: 1,
     maxUsers: 1,
     simulatorAccess: 'all',
@@ -151,6 +184,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'COMPANY_PEQUENA',
     family: 'COMPANY',
     label: PLAN_LABELS.COMPANY_PEQUENA,
+    priceMznMonthly: 3_500,
+    priceMznAnnual: 35_700,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: 1,
     maxUsers: 3,
     simulatorAccess: 'all',
@@ -165,6 +202,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'COMPANY_MEDIA',
     family: 'COMPANY',
     label: PLAN_LABELS.COMPANY_MEDIA,
+    priceMznMonthly: 8_500,
+    priceMznAnnual: 86_700,
+    trialDays: 0,
+    customPricing: false,
     maxCompanies: 1,
     maxUsers: 15,
     simulatorAccess: 'all',
@@ -179,6 +220,10 @@ const PLAN_LIMITS: Record<PlanCode, PlanLimits> = {
     code: 'COMPANY_GRANDE',
     family: 'COMPANY',
     label: PLAN_LABELS.COMPANY_GRANDE,
+    priceMznMonthly: 25_000,
+    priceMznAnnual: null,
+    trialDays: 0,
+    customPricing: true,
     maxCompanies: Infinity,
     maxUsers: Infinity,
     simulatorAccess: 'all',

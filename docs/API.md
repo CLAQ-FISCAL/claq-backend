@@ -64,22 +64,29 @@ Two plan families, selected by `Tenant.type` (`ACCOUNTANT` or `COMPANY`), enforc
 
 ### Accountants (`GET /v1/plans` → `families.ACCOUNTANT`)
 
-| Plan | Companies | Label |
-|---|---|---|
-| **ACCOUNTANT_FREE** | 3 | Início de Carteira |
-| **ACCOUNTANT_PRO** | 20 | Carteira em Crescimento |
-| **ACCOUNTANT_PREMIUM** | 60+ (unlimited) | Carteira Alargada / Escritório |
+| Plan | Companies | Monthly (MZN) | Annual (MZN) | Label |
+|---|---|---|---|---|
+| **ACCOUNTANT_FREE** | 3 | 1 500 (30-day free trial) | 15 300 | Início de Carteira |
+| **ACCOUNTANT_PRO** | 20 | 4 500 | 45 900 | Carteira em Crescimento |
+| **ACCOUNTANT_PREMIUM** | 60+ (unlimited) | 12 500 | 127 500 | Carteira Alargada / Escritório |
+
+Annual prices apply the standard 15% discount over twelve monthly payments.
 
 ### Companies / Empresas (`GET /v1/plans` → `families.COMPANY`)
 
 Tier suggested from declared annual revenue (`Company.annualRevenueMzn`).
 
-| Plan | Annual revenue (MZN) | Users | Storage | Features |
-|---|---|---|---|---|
-| **COMPANY_MICRO** | < 2.5 M | 1 | — | fiscal calendar, alerts |
-| **COMPANY_PEQUENA** | 2.5 M – 25 M | 3 | 5 GB | + risk score |
-| **COMPANY_MEDIA** | 25 M – 100 M | 15 | unlimited | + audit, branches |
-| **COMPANY_GRANDE** | > 100 M / group | unlimited | unlimited | + multi-enterprise, multicontribution |
+| Plan | Annual revenue (MZN) | Monthly (MZN) | Annual (MZN) | Users | Storage | Features |
+|---|---|---|---|---|---|---|
+| **COMPANY_MICRO** | < 2.5 M | 1 200 | 12 240 | 1 | — | fiscal calendar, alerts |
+| **COMPANY_PEQUENA** | 2.5 M – 25 M | 3 500 | 35 700 | 3 | 5 GB | + risk score |
+| **COMPANY_MEDIA** | 25 M – 100 M | 8 500 | 86 700 | 15 | unlimited | + audit, branches |
+| **COMPANY_GRANDE** | > 100 M / group | 25 000 (from) | sob consulta | unlimited | unlimited | + multi-enterprise, multicontribution |
+
+`COMPANY_GRANDE` is quoted through sales; the catalogue publishes its starting monthly
+price (`customPricing: true`, `priceMznAnnual: null`). Each plan DTO exposes
+`priceMznMonthly`, `priceMznAnnual`, `trialDays`, `customPricing`, and `priceMzn` (an
+alias of the monthly price for older clients).
 
 `GET /v1/subscription` returns `plan`, `family`, `tenantType`, `limits` (companies, users, storage, features, channels), and usage.
 `GET /v1/plans/suggest?annualRevenueMzn=…` returns the suggested Empresas tier.

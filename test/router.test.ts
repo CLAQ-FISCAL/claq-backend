@@ -14,6 +14,10 @@ type PlanDto = {
   family: string;
   description?: string;
   priceMzn?: number | null;
+  priceMznMonthly?: number | null;
+  priceMznAnnual?: number | null;
+  trialDays?: number;
+  customPricing?: boolean;
   limits: {
     maxCompanies: number;
     maxUsers: number;
@@ -97,6 +101,10 @@ describe('api router auth and routing', () => {
     const plan = body.families.ACCOUNTANT[0];
     expect(plan.family).toBe('ACCOUNTANT');
     expect(typeof plan.description).toBe('string');
+    expect(plan.priceMznMonthly).toBe(1_500);
+    expect(plan.priceMznAnnual).toBe(15_300);
+    expect(plan.priceMzn).toBe(1_500);
+    expect(plan.trialDays).toBe(30);
     expect(typeof plan.limits.maxCompanies).toBe('number');
     expect(Array.isArray(plan.limits.simulatorAccess)).toBe(true);
     expect(body.revenueThresholds[0]).toEqual({ plan: 'COMPANY_MICRO', minMzn: 0, maxMzn: 2_500_000 });

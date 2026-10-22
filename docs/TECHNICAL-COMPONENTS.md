@@ -611,16 +611,22 @@ governance consideration for production.
 
 **Plan families and limits** (`src/lib/plans.ts`)
 
-| Plan | Family | Companies | Users | Storage | Features |
-|---|---|---|---|---|---|
-| `DEMO` | Demo | unlimited | unlimited | unlimited | calendar, alerts, risk, audit, branches, multi-enterprise, multi-contribution |
-| `ACCOUNTANT_FREE` | Accountant | 3 | unlimited | unlimited | calendar, alerts |
-| `ACCOUNTANT_PRO` | Accountant | 20 | unlimited | unlimited | calendar, alerts |
-| `ACCOUNTANT_PREMIUM` | Accountant | unlimited | unlimited | unlimited | calendar, alerts |
-| `COMPANY_MICRO` | Company | 1 | 1 | 0 | calendar, alerts |
-| `COMPANY_PEQUENA` | Company | 1 | 3 | 5 GB | calendar, alerts, risk score |
-| `COMPANY_MEDIA` | Company | 1 | 15 | unlimited | calendar, alerts, risk score, audit, branches |
-| `COMPANY_GRANDE` | Company | unlimited | unlimited | unlimited | all company features |
+| Plan | Family | Monthly (MZN) | Annual (MZN) | Trial | Companies | Users | Storage | Features |
+|---|---|---|---|---|---|---|---|---|
+| `DEMO` | Demo | — | — | — | unlimited | unlimited | unlimited | calendar, alerts, risk, audit, branches, multi-enterprise, multi-contribution |
+| `ACCOUNTANT_FREE` | Accountant | 1,500 | 15,300 | 30 days | 3 | unlimited | unlimited | calendar, alerts |
+| `ACCOUNTANT_PRO` | Accountant | 4,500 | 45,900 | — | 20 | unlimited | unlimited | calendar, alerts |
+| `ACCOUNTANT_PREMIUM` | Accountant | 12,500 | 127,500 | — | unlimited | unlimited | unlimited | calendar, alerts |
+| `COMPANY_MICRO` | Company | 1,200 | 12,240 | — | 1 | 1 | 0 | calendar, alerts |
+| `COMPANY_PEQUENA` | Company | 3,500 | 35,700 | — | 1 | 3 | 5 GB | calendar, alerts, risk score |
+| `COMPANY_MEDIA` | Company | 8,500 | 86,700 | — | 1 | 15 | unlimited | calendar, alerts, risk score, audit, branches |
+| `COMPANY_GRANDE` | Company | 25,000 (from) | sob consulta | — | unlimited | unlimited | unlimited | all company features |
+
+Annual prices apply the standard 15% discount (`ANNUAL_DISCOUNT`). `COMPANY_GRANDE` is
+custom-quoted: `customPricing: true` and `priceMznAnnual: null`, with 25,000 MZN/month as
+the published starting point. The plan DTO emits `priceMznMonthly`, `priceMznAnnual`,
+`trialDays`, `customPricing`, and `priceMzn` (an alias of the monthly price). Stripe price
+ids still come from `STRIPE_PRICES`; the figures above are the catalogue of record.
 
 Company tiers are suggested from declared annual revenue:
 
@@ -632,8 +638,8 @@ Company tiers are suggested from declared annual revenue:
 | `COMPANY_GRANDE` | `>= 100,000,000` |
 
 All plans currently declare `simulatorAccess: 'all'` and all four notification channels.
-`priceMzn` is not set in code; the plan DTO therefore emits `null` (the frontend shows
-"Free"). Prices are configured in Stripe through `STRIPE_PRICES`.
+Prices are defined in `src/lib/plans.ts` and exposed by the plan DTO; Stripe price ids are
+mapped separately through `STRIPE_PRICES`.
 
 **Enforcement status**
 

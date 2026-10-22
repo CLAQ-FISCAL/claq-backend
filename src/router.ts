@@ -79,7 +79,11 @@ function planDto(plan: PlanCode) {
     label: limits.label,
     family: limits.family,
     description: PLAN_DESCRIPTIONS[limits.code],
-    priceMzn: limits.priceMzn ?? null,
+    priceMzn: limits.priceMznMonthly,
+    priceMznMonthly: limits.priceMznMonthly,
+    priceMznAnnual: limits.priceMznAnnual,
+    trialDays: limits.trialDays,
+    customPricing: limits.customPricing,
     limits: limitsDto(plan),
   };
 }

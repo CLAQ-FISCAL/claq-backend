@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCOUNTANT_PLAN_CODES,
+  ACCOUNTANT_TRIAL_DAYS,
+  ANNUAL_DISCOUNT,
   COMPANY_PLAN_CODES,
   ALL_SIMULATORS,
   CORE_SIMULATORS,
@@ -71,6 +73,36 @@ describe('plan definitions', () => {
     expect(planHasFeature('COMPANY_MEDIA', 'MULTI_ENTERPRISE')).toBe(false);
     expect(planHasFeature('COMPANY_GRANDE', 'MULTI_ENTERPRISE')).toBe(true);
     expect(planHasFeature('COMPANY_GRANDE', 'MULTI_CONTRIBUTION')).toBe(true);
+  });
+
+  it('publishes the monthly and annual prices with a 15% annual discount', () => {
+    const prices: Record<string, [number, number]> = {
+      ACCOUNTANT_FREE: [1_500, 15_300],
+      ACCOUNTANT_PRO: [4_500, 45_900],
+      ACCOUNTANT_PREMIUM: [12_500, 127_500],
+      COMPANY_MICRO: [1_200, 12_240],
+      COMPANY_PEQUENA: [3_500, 35_700],
+      COMPANY_MEDIA: [8_500, 86_700],
+    };
+    for (const [code, [monthly, annual]] of Object.entries(prices)) {
+      const limits = getPlanLimits(code);
+      expect(limits.priceMznMonthly).toBe(monthly);
+      expect(limits.priceMznAnnual).toBe(annual);
+      expect(annual).toBe(Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT)));
+    }
+    expect(ANNUAL_DISCOUNT).toBe(0.15);
+  });
+
+  it('gives the accountant entry plan a 30-day trial and the large company plan custom pricing', () => {
+    expect(getPlanLimits('ACCOUNTANT_FREE').trialDays).toBe(ACCOUNTANT_TRIAL_DAYS);
+    expect(ACCOUNTANT_TRIAL_DAYS).toBe(30);
+    for (const code of ACCOUNTANT_PLAN_CODES.filter((c) => c !== 'ACCOUNTANT_FREE')) {
+      expect(getPlanLimits(code).trialDays).toBe(0);
+    }
+    const grande = getPlanLimits('COMPANY_GRANDE');
+    expect(grande.priceMznMonthly).toBe(25_000);
+    expect(grande.priceMznAnnual).toBeNull();
+    expect(grande.customPricing).toBe(true);
   });
 
   it('suggests the Empresas tier from annual revenue boundaries', () => {
