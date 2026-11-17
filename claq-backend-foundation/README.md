@@ -1,5 +1,7 @@
 # CLAQ Fiscal Alert backend foundation
 
+> **Retired scaffold — do not deploy.** The active backend is maintained in `CLAQ-FISCAL/CLAQ-FISCAL-WEB/backend`. This nested copy is kept as historical reference only and has no deployment workflow.
+
 This is a safe, repeatable AWS backend foundation for the `CLAQ-FISCAL/claq-backend` repository. It has two completely separate environments:
 
 - **demo**: investor/test environment. Synthetic data only, low-cost configuration, automatically identifiable as `DEMO`.
@@ -30,29 +32,10 @@ claq-backend/
   .github/workflows/{verify.yml,deploy.yml}
 ```
 
-## First-time deployment: follow in this order
+## Historical reference
 
-1. Create separate AWS accounts named `claq-demo` and `claq-prod` (best), or use separate `demo` and `prod` stacks while the account split is being arranged. Enable MFA on the root user, do not create routine access keys, and enable AWS IAM Identity Center.
-2. Install Node.js 22 LTS, AWS CLI v2 and CDK v2. Sign in to AWS with an Identity Center administrator role—not root.
-3. In GitHub, make `claq-backend` **private**. Create GitHub Environments `demo` and `prod`; set required reviewers for `prod`.
-4. Copy this foundation into the root of `claq-backend`. Create the `main` branch protection: PR required, two approvals (or one while two-person), status checks `verify`, no direct push, no force push.
-5. Create a GitHub OIDC identity provider and one IAM role per environment. Give the demo role access only to demo-tagged stacks; production role only to production-tagged stacks. Store its role ARN in GitHub environment variable `AWS_DEPLOY_ROLE_ARN`.
-6. In each AWS account run `cdk bootstrap aws://ACCOUNT/REGION`. Then run `npm ci`, `npm run test`, `npm run synth -- --context env=demo`, and `npm run deploy:demo`. Never deploy with a developer’s permanent access key.
-7. Create the Cognito app-client and configure the frontend developer with only `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` and `API_BASE_URL`. Do not put AWS keys, RDS password, KMS keys or backend secrets in Flutter/web code.
-8. Set real database secret values only in AWS Secrets Manager. Run the database migration job from the deployment pipeline. Seed only synthetic demo company data in `demo`.
-9. Test login, Tenant A/B isolation, an expired JWT, document upload, reminder retry/DLQ and one database restore before an investor demo. Before production, obtain independent penetration testing and tax/legal approval.
-
-## Commands
-
-```powershell
-npm ci
-npm run lint
-npm test
-npm run synth -- --context env=demo
-npm run deploy:demo
-```
-
-The GitHub deployment workflow is deliberately a template: replace `AWS_DEPLOY_ROLE_ARN` with the actual **role ARN**, not a secret. GitHub’s OpenID Connect mechanism removes the need to store AWS access keys in GitHub.
+This scaffold is retired. Its deployment instructions are intentionally removed; do not
+run CDK from this directory. Use only `CLAQ-FISCAL/CLAQ-FISCAL-WEB/backend` for deploys.
 
 ## Non-negotiable guardrails
 

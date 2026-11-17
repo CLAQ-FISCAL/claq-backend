@@ -11,10 +11,7 @@
     "lint": "eslint src infra scripts",
     "test": "vitest run",
     "synth": "npm run build:lambdas && cdk synth",
-    "deploy:demo": "npm run build:lambdas && cdk deploy --all --context env=demo --require-approval broadening",
-    "deploy:prod": "npm run build:lambdas && cdk deploy --all --context env=prod --require-approval broadening",
-    "db:generate": "prisma generate",
-    "seed:demo": "tsx prisma/seed.ts"
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.800.0",

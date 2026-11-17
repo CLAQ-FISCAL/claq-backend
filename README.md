@@ -1,5 +1,7 @@
 # CLAQ Fiscal Alert backend
 
+> **Retired deployment repository.** The canonical backend is now `backend/` in [`CLAQ-FISCAL/CLAQ-FISCAL-WEB`](https://github.com/CLAQ-FISCAL/CLAQ-FISCAL-WEB). This repository is preserved for history and reference only. AWS deployment has been disabled here; do not deploy from this checkout.
+
 Backend for the CLAQ Fiscal Alert product (tax compliance, obligations, simulators and
 alerts for Mozambique). Two completely separate environments:
 
@@ -34,8 +36,8 @@ reviewed `RuleSet` rows (see `docs/TAX-CONTENT.md`).
   employer cost, penalties, non-resident services, overtime, leave, severance, stamp
   duty, TAE) — every number computed from **APPROVED** rule content only, with Decimal
   math and full calculation breakdowns
-- **CI/CD**: `verify` workflow (lint, typecheck, tests, synth) and OIDC-based `deploy`
-  workflow with GitHub environments (`demo`, `prod` requires reviewers)
+- **CI**: verification workflow retained for historical reference. AWS deployment is
+  disabled in this repository.
 
 ## Repository layout
 
@@ -48,25 +50,20 @@ claq-backend/
   scripts/             # esbuild lambda bundler
   test/                # vitest: rules guard, simulators, generator, planner, router
   docs/                # API.md, TAX-CONTENT.md, RUNBOOK.md, SECURITY.md
-  .github/workflows/   # verify.yml, deploy.yml
+  .github/workflows/   # verify.yml only; AWS deployment is disabled
 ```
 
-## Commands
+## Historical repository commands
 
 ```powershell
 npm install          # postinstall runs prisma generate
 npm run lint
 npm test
 npm run synth -- --context env=demo
-npm run deploy:demo
-npm run seed:demo    # after first deploy; needs DATABASE_URL (see docs/RUNBOOK.md)
 ```
 
-## First-time deployment
-
-Follow `docs/RUNBOOK.md` in order (bootstrap → deploy → seed → create Cognito users →
-bind membership → hand the frontend exactly `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`,
-`API_BASE_URL`). The first deploy creates the database and runs migrations automatically.
+Deployment and demo seeding commands have intentionally been removed. Use only the
+canonical `backend/` workspace in `CLAQ-FISCAL/CLAQ-FISCAL-WEB` for AWS deployments.
 
 ## Non-negotiable guardrails
 
